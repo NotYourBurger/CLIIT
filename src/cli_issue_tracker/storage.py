@@ -52,12 +52,22 @@ def write_issue(issue: dict) -> str | None:
     if path is None:
         return None
 
-    # The exact inverse of parse_issue - same three keys, same fence, same body.
-    # Change one and you must change the other, which is why they live together.
+    # The exact inverse of parse_issue - every frontmatter key back out, same
+    # fence, same body. Change one and you must change the other, which is why
+    # they live together. The three known keys keep their documented order;
+    # anything else a human added to the file follows, rather than being
+    # dropped on the next rewrite. "title" is derived from the body heading,
+    # not a frontmatter field, so it is not written back.
+    fields = [f"{key}: {issue[key]}" for key in ("id", "status", "created_at")]
+    fields += [
+        f"{key}: {value}"
+        for key, value in issue.items()
+        if key not in ("id", "status", "created_at", "title", "body")
+    ]
+    frontmatter = "\n".join(fields)
+
     content = f"""---
-id: {issue["id"]}
-status: {issue["status"]}
-created_at: {issue["created_at"]}
+{frontmatter}
 ---
 
 {issue["body"]}

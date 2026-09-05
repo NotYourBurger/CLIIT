@@ -41,8 +41,10 @@ Running `issue list` should print every issue in the repo as an aligned table.
 ```
 
 Everything below the frontmatter is yours — headings, tables, code fences and
-horizontal rules all survive a read/write round trip. Ids are allocated as one
-past the highest existing `ISS-NNN`, so deleting an issue never reuses a live id.
+horizontal rules all survive a read/write round trip. Frontmatter fields the tool
+does not know about are kept too, so you can add your own by hand. Ids are
+allocated as one past the highest existing `ISS-NNN`, so deleting an issue never
+reuses a live id.
 
 ## Layout
 
@@ -57,3 +59,5 @@ past the highest existing `ISS-NNN`, so deleting an issue never reuses a live id
 ## Status
 
 Working: `init`, `create`, `list`, `view`, `set`.
+
+Run the file-format round trip checks with `uv run python test_storage.py`.
