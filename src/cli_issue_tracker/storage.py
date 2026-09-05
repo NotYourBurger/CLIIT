@@ -1,15 +1,26 @@
 import os
+import sys
+from datetime import datetime
 
 ISSUES_DIR = ".issues"
+
+def now() -> str:
+    """The one timestamp format on disk - local time, second precision."""
+    return datetime.now().astimezone().isoformat(timespec="seconds")
 
 def issues_dir() -> str:
     return os.path.join(os.getcwd(), ISSUES_DIR)
 
-def require_issue_dir() -> str | None:
+def require_issue_dir() -> str:
+    """The .issues/ path, or exit 1. Nothing this tool does works without the
+    directory, so failing here rather than returning None means every command
+    reports the failure in its exit code instead of returning 0 with no output -
+    which is what a script piping --json needs to see. stderr for the same
+    reason: stdout is what the parser reads."""
     path = issues_dir()
     if not os.path.isdir(path):
-        print("Please Run - issue init - to initialize the project first")
-        return None
+        print("Please Run - issue init - to initialize the project first", file=sys.stderr)
+        sys.exit(1)
     return path
 
 def parse_issue(file_path: str) -> dict | None:
@@ -41,28 +52,34 @@ def parse_issue(file_path: str) -> dict | None:
             issue["title"] = line[2:].strip()
             break
 
-    # A file missing any of these isn't an issue we wrote - skip it.
+    # A file missing any of these isn't an issue we wrote - skip it. updated_at
+    # is deliberately not required: files written before it existed don't have
+    # one, and requiring it would drop them out of `issue list` entirely.
     if not all(k in issue for k in ("id", "status", "created_at", "title")):
         return None
     return issue
 
-def write_issue(issue: dict) -> str | None:
-    """Write an issue dict to .issues/<id>.md. Returns the path, or None if no .issues."""
+def write_issue(issue: dict) -> str:
+    """Write an issue dict to .issues/<id>.md. Returns the path."""
     path = require_issue_dir()
-    if path is None:
-        return None
+
+    # Every write is a change, and every change goes through here, so this is
+    # the one place the clock is read. Mutates the caller's dict so it matches
+    # what just landed on disk.
+    issue["updated_at"] = now()
 
     # The exact inverse of parse_issue - every frontmatter key back out, same
     # fence, same body. Change one and you must change the other, which is why
-    # they live together. The three known keys keep their documented order;
+    # they live together. The four known keys keep their documented order;
     # anything else a human added to the file follows, rather than being
     # dropped on the next rewrite. "title" is derived from the body heading,
     # not a frontmatter field, so it is not written back.
-    fields = [f"{key}: {issue[key]}" for key in ("id", "status", "created_at")]
+    known = ("id", "status", "created_at", "updated_at")
+    fields = [f"{key}: {issue[key]}" for key in known]
     fields += [
         f"{key}: {value}"
         for key, value in issue.items()
-        if key not in ("id", "status", "created_at", "title", "body")
+        if key not in known + ("title", "body")
     ]
     frontmatter = "\n".join(fields)
 
@@ -81,8 +98,6 @@ def write_issue(issue: dict) -> str | None:
 
 def read_issue(id: str) -> dict | None:
     path = require_issue_dir()
-    if path is None:
-        return None
     file_name = f"{id}.md"
     file_path = os.path.join(path,file_name)
     if os.path.isfile(file_path):

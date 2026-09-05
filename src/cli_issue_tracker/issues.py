@@ -1,5 +1,6 @@
+import json
 import os
-from datetime import datetime
+import sys
 
 
 from rich.console import Console
@@ -11,6 +12,7 @@ from rich.theme import Theme
 
 from cli_issue_tracker.convert_id import next_id
 from cli_issue_tracker.storage import require_issue_dir
+from cli_issue_tracker.storage import now
 from cli_issue_tracker.storage import parse_issue
 from cli_issue_tracker.storage import read_issue
 from cli_issue_tracker.storage import write_issue
@@ -30,12 +32,9 @@ console = Console(theme=THEME)
 def create_issue(title: str, description: str):
 
     path = require_issue_dir()
-    if path is None:
-        return
-
     issue = {
         "id": next_id(path),
-        "created_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "created_at": now(),
         "status": "open",
         "body": f"# {title}\n\n{description}",
     }
@@ -53,14 +52,14 @@ def rank(issue):
     return STATUSES.index(status) if status in STATUSES else len(STATUSES) #sorting the issues based on the STATUS ordering
 
 
-def check_status(status):
-    """True if it's a status we know. Prints why not when it isn't.
-    Shared by list (filtering) and set (writing) so there is one list and
-    one message, not two that drift apart."""
-    if status in STATUSES:
-        return True
-    print(f"Unknown status {status!r} - use: {', '.join(STATUSES)}")
-    return False
+def require_status(status):
+    """Pass, or exit 1 saying why. Shared by list (filtering) and set (writing)
+    so there is one list and one message, not two that drift apart. Same
+    contract as require_issue_dir - a word we cannot act on is a failed
+    command, not a quiet one."""
+    if status not in STATUSES:
+        print(f"Unknown status {status!r} - use: {', '.join(STATUSES)}", file=sys.stderr)
+        sys.exit(1)
 
 
 def print_rows(issues, width, status_width):
@@ -79,16 +78,14 @@ def print_rows(issues, width, status_width):
         previous = issue["status"]
 
 
-def list_issues(status=None):
+def list_issues(status=None, as_json=False):
     # Reject a bad word before touching the disk - "issue list opne" should say so,
     # not print an empty table and look like there is nothing to do. None is the
     # no-filter case, which is legitimate, so it skips the check.
-    if status is not None and not check_status(status):
-        return
+    if status is not None:
+        require_status(status)
 
     path = require_issue_dir()
-    if path is None:
-        return
     issues = []
     for filename in sorted(os.listdir(path)):
         if filename.startswith("ISS-") and filename.endswith(".md"):
@@ -99,36 +96,57 @@ def list_issues(status=None):
     if status is not None:
         issues = [issue for issue in issues if issue["status"] == status]
 
+    # Stable sort, and the list is already in id order, so ids stay ordered
+    # inside each group.
+    issues.sort(key=rank)
+
+    # Everything above collects; everything below renders. --json swaps the
+    # renderer and nothing else - same issues, same order, same filter.
+    if as_json:
+        # Before the empty check on purpose: "no issues" is [] to a script, not
+        # a sentence it would choke on.
+        print(json.dumps(issues, indent=2))
+        return
+
     if not issues:
         # Two different empty cases: nothing at all, or nothing matching.
         print("No issues yet - run: issue create" if status is None else f"No {status} issues")
         return
 
     # Widen each column to fit its longest value, so nothing gets truncated.
-    # Computed across every issue being shown, before the sort, so all groups
-    # share one set of column positions.
+    # Computed across every issue being shown, so all groups share one set of
+    # column positions.
     width = max(len("TITLE"), *(len(issue["title"]) for issue in issues)) + 2
     status_width = max(len("STATUS"), *(len(issue["status"]) for issue in issues)) + 2
-
-    # Stable sort, and the list is already in id order, so ids stay ordered
-    # inside each group.
-    issues.sort(key=rank)
 
     print(f"{'ID':<9}{'TITLE':<{width}}{'STATUS':<{status_width}}CREATED AT")
     print_rows(issues, width, status_width)
 
 
-def view_issue(id):
+def view_issue(id, as_json=False):
 
     issue = read_issue(id)
     if issue is None:
-        print(f"Issue {id} Doesnt Exist")
+        # An id that isn't there is a failed lookup, not an empty one - same
+        # contract as require_issue_dir, so a script gets a non-zero exit rather
+        # than success with nothing on stdout.
+        print(f"Issue {id} Doesnt Exist", file=sys.stderr)
+        sys.exit(1)
+
+    if as_json:
+        # body included verbatim - it is the field the table cannot carry and
+        # the one an external reader actually wants.
+        print(json.dumps(issue, indent=2))
         return
-    
+
     table = Table(show_header=True, header_style="bold cyan")
-    for name in ("ID" , "STATUS", "CREATED AT"):
+    for name in ("ID" , "STATUS", "CREATED AT", "UPDATED AT"):
         table.add_column(name)
-    table.add_row(issue["id"], issue["status"], issue["created_at"])
+    # Issues written before updated_at existed have none - say so rather than
+    # inventing a time we never recorded.
+    table.add_row(
+        issue["id"], issue["status"], issue["created_at"], issue.get("updated_at", "unknown")
+    )
     console.print(table)
     console.print(Markdown(issue["body"]))
     
@@ -136,14 +154,13 @@ def view_issue(id):
 def set_status(ids: list[str], status: str):
     # Validated once for the whole batch - the status is typed by the user now,
     # so a typo must not reach the file. One bad word, one error line.
-    if not check_status(status):
-        return
+    require_status(status)
 
     for id in ids:
         issue = read_issue(id)
         if issue is None:
             # Keep going: one bad id in a batch should not cancel the rest.
-            print(f"Issue {id} Was Not Found")
+            print(f"Issue {id} Was Not Found", file=sys.stderr)
             continue
         if issue["status"] == status:
             print(f"Issue {id} has already been {status}")

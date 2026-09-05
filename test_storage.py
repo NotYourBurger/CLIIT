@@ -47,9 +47,14 @@ x = 1
 
 def round_trip(issue):
     """Write the issue out and read it straight back."""
-    path = write_issue(issue)
-    assert path is not None, "write_issue found no .issues/ - the setup is wrong"
-    return parse_issue(path)
+    return parse_issue(write_issue(issue))
+
+
+def stable(issue):
+    """Everything a rewrite must preserve. updated_at is excluded because
+    write_issue restamps it on purpose - that is the one field allowed to
+    differ between a dict and its own round trip."""
+    return {key: value for key, value in issue.items() if key != "updated_at"}
 
 
 if __name__ == "__main__":
@@ -74,8 +79,14 @@ if __name__ == "__main__":
             shutil.copyfile(os.path.join(REPO, ".issues", "ISS-003.md"), real)
             issue = parse_issue(real)
             assert issue is not None, "ISS-003.md no longer parses as an issue"
-            assert round_trip(issue) == issue, "ISS-003 changed on rewrite"
-            assert round_trip(round_trip(issue)) == issue, "rewrite is not idempotent"
+            assert "updated_at" not in issue, "ISS-003.md on disk predates updated_at"
+            assert stable(round_trip(issue)) == stable(issue), "ISS-003 changed on rewrite"
+            assert stable(round_trip(round_trip(issue))) == stable(issue), "rewrite is not idempotent"
+
+            # An old file has no updated_at and must still parse - requiring it
+            # would drop every pre-existing issue out of `issue list`. The first
+            # rewrite is what fills it in.
+            assert round_trip(issue)["updated_at"], "a rewrite did not stamp updated_at"
 
             # 2. The nasty body: every construct that has broken the parser.
             nasty = {
@@ -89,7 +100,7 @@ if __name__ == "__main__":
             assert got["title"] == "The real title", "a later '# ' heading overwrote the title"
             assert got["status"] == "in-progress", "a '---' in the body ended the frontmatter early"
             assert got["created_at"] == nasty["created_at"]
-            assert round_trip(got) == got, "the nasty body is not stable across a rewrite"
+            assert stable(round_trip(got)) == stable(got), "the nasty body is not stable across a rewrite"
 
             # 3. Files we did not write are skipped, not half-parsed. list_issues
             #    walks the whole directory, so None here is what keeps junk out.
@@ -110,20 +121,21 @@ if __name__ == "__main__":
                 )
             )
             assert extra["assignee"] == "tahmid", "parse should keep unknown frontmatter fields"
-            assert round_trip(extra) == extra, "an unknown frontmatter field was dropped on rewrite"
+            assert stable(round_trip(extra)) == stable(extra), "an unknown frontmatter field was dropped on rewrite"
 
-            # The three documented keys keep their documented order and any
+            # The four documented keys keep their documented order and any
             # extras follow, so a rewrite does not reshuffle every file in the
             # repo. title comes from the body heading, not the frontmatter, so
             # it must not leak back out as a duplicate key.
             extra["status"] = "closed"
             with open(write_issue(extra), encoding="utf-8") as file:
-                head = file.read().splitlines()[:6]
+                head = file.read().splitlines()[:7]
             assert head == [
                 "---",
                 "id: ISS-903",
                 "status: closed",
                 "created_at: x",
+                f"updated_at: {extra['updated_at']}",
                 "assignee: tahmid",
                 "---",
             ], head

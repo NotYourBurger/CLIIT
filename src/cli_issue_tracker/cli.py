@@ -21,16 +21,19 @@ def create(
     create_issue(title, description)
 
 @app.command("list")
-def list_projects(status: str = typer.Argument(None)):
-    list_issues(status)
+def list_projects(
+    status: str = typer.Argument(None),
+    as_json: bool = typer.Option(False, "--json", help="Print the issues as JSON"),
+):
+    list_issues(status, as_json)
     
 @app.command("init")
 def init_project():
     init()
 
 @app.command("view")
-def view(id):
-    view_issue(id)
+def view(id, as_json: bool = typer.Option(False, "--json", help="Print the issue as JSON")):
+    view_issue(id, as_json)
 
 @app.command("set")
 def set_command(ids: list[str], status: str):
