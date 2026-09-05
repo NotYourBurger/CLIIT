@@ -43,14 +43,6 @@ def create_issue(title: str, description: str):
     print(f"Issue {issue['id']} has been created")
 
 
-def render(content):
-    try:
-        console.print(Markdown(content))
-    except:
-        print("Something Went Wrong")
-
-    
-
 STATUSES = ("in-progress", "open", "closed") ## Ordering
 
 
@@ -138,7 +130,7 @@ def view_issue(id):
         table.add_column(name)
     table.add_row(issue["id"], issue["status"], issue["created_at"])
     console.print(table)
-    render(issue["body"])
+    console.print(Markdown(issue["body"]))
     
 
 def set_status(ids: list[str], status: str):
