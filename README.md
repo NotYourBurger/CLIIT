@@ -15,8 +15,10 @@ uv sync
 ```bash
 issue init                          # create .issues/ in the current directory
 issue create "Title" "Description"  # write .issues/ISS-001.md
+issue create "Title" "..." --priority high   # high, medium (default) or low
 issue list                          # every issue, grouped by status
 issue list open                     # only one status: in-progress, open or closed
+issue list --priority high          # only one priority; combines with a status
 issue view ISS-001                  # render the issue as formatted Markdown
 issue set ISS-001 ISS-002 closed    # set the status of one or more issues
 issue log ISS-001                   # the issue's git history: who changed it, when, why
@@ -24,6 +26,13 @@ issue log ISS-001                   # the issue's git history: who changed it, w
 
 Statuses are `in-progress`, `open` and `closed`. `issue list` groups them in that
 order with a rule between groups, so what you are working on stays at the top.
+
+Priorities are `high`, `medium` and `low`, set at `create` time and stored as a
+`priority` frontmatter field. They filter and show in a column; they do not
+change the sort order, which stays status-then-id. Issues filed before the field
+existed have no priority: they show `-`, and they match no `--priority` filter
+rather than being counted as `medium`. To give one a priority, or change one,
+edit the field in the file — nothing else writes it yet.
 
 Every command except `init` finds `.issues/` by walking up from the current
 directory, the way `git` finds `.git`, so they all work from anywhere in the
@@ -46,6 +55,7 @@ Each issue is one Markdown file with YAML-style frontmatter:
 id: ISS-001
 status: open
 created_at: 2026-09-04T14:04:43+06:00
+priority: medium
 ---
 
 # List View for the Issue Tracker
@@ -78,7 +88,8 @@ so rather than looking like nothing changed.
 Working: `init`, `create`, `list`, `view`, `set`, `log`.
 
 Run the checks with `uv run python test_storage.py` (file format round trips),
-`uv run python test_log.py` (`issue log` against a throwaway git repo) and
+`uv run python test_log.py` (`issue log` against a throwaway git repo),
+`uv run python test_priority.py` (priority, and the issues that predate it) and
 `uv run python test_encoding.py`.
 
 That last one exists because the same mistake landed three times: this machine

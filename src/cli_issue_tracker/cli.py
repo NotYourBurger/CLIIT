@@ -22,15 +22,17 @@ def main():
 def create(
     title: str,
     description: str,
+    priority: str = typer.Option("medium", "--priority", help="high, medium or low"),
 ):
-    create_issue(title, description)
+    create_issue(title, description, priority)
 
 @app.command("list")
 def list_projects(
     status: str = typer.Argument(None),
+    priority: str = typer.Option(None, "--priority", help="Only issues with this priority"),
     as_json: bool = typer.Option(False, "--json", help="Print the issues as JSON"),
 ):
-    list_issues(status, as_json)
+    list_issues(status, priority, as_json)
     
 @app.command("init")
 def init_project():

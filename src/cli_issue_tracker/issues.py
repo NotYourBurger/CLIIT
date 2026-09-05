@@ -30,13 +30,16 @@ THEME = Theme(
 
 console = Console(theme=THEME)
 
-def create_issue(title: str, description: str):
+def create_issue(title: str, description: str, priority: str = "medium"):
 
+    # Before the id is allocated: a rejected create must not burn a number.
+    require_priority(priority)
     path = require_issue_dir()
     issue = {
         "id": next_id(path),
         "created_at": now(),
         "status": "open",
+        "priority": priority,
         "body": f"# {title}\n\n{description}",
     }
     write_issue(issue)
@@ -53,6 +56,16 @@ def rank(issue):
     return STATUSES.index(status) if status in STATUSES else len(STATUSES) #sorting the issues based on the STATUS ordering
 
 
+PRIORITIES = ("high", "medium", "low")
+
+
+def priority_of(issue):
+    """What to show and filter on. Missing stays missing - the issues written
+    before this field existed never had a priority, and calling those "medium"
+    would invent a decision nobody made."""
+    return issue.get("priority", "-")
+
+
 def require_status(status):
     """Pass, or exit 1 saying why. Shared by list (filtering) and set (writing)
     so there is one list and one message, not two that drift apart. Same
@@ -63,10 +76,23 @@ def require_status(status):
         sys.exit(1)
 
 
-def print_rows(issues, id_width, width, status_width):
+def require_priority(priority):
+    """The same contract as require_status, for the other three-word list. Two
+    near-identical validators beat one parameterised one for lists this short -
+    fold them together when there is a third."""
+    if priority not in PRIORITIES:
+        print(f"Unknown priority {priority!r} - use: {', '.join(PRIORITIES)}", file=sys.stderr)
+        sys.exit(1)
+
+
+def print_rows(issues, id_width, width, status_width, priority_width):
 
     rule = "-" * (
-        id_width + width + status_width + max(len(issue["created_at"]) for issue in issues)
+        id_width
+        + width
+        + status_width
+        + priority_width
+        + max(len(issue["created_at"]) for issue in issues)
     )
     previous = None
     for issue in issues:
@@ -74,17 +100,20 @@ def print_rows(issues, id_width, width, status_width):
         if previous is not None and issue["status"] != previous:
             print(rule)
         print(
-            f"{issue['id']:<{id_width}}{issue['title']:<{width}}{issue['status']:<{status_width}}{issue['created_at']}"
+            f"{issue['id']:<{id_width}}{issue['title']:<{width}}{issue['status']:<{status_width}}"
+            f"{priority_of(issue):<{priority_width}}{issue['created_at']}"
         )
         previous = issue["status"]
 
 
-def list_issues(status=None, as_json=False):
+def list_issues(status=None, priority=None, as_json=False):
     # Reject a bad word before touching the disk - "issue list opne" should say so,
     # not print an empty table and look like there is nothing to do. None is the
     # no-filter case, which is legitimate, so it skips the check.
     if status is not None:
         require_status(status)
+    if priority is not None:
+        require_priority(priority)
 
     path = require_issue_dir()
     issues = []
@@ -100,6 +129,10 @@ def list_issues(status=None, as_json=False):
 
     if status is not None:
         issues = [issue for issue in issues if issue["status"] == status]
+    if priority is not None:
+        # Issues filed before the field existed match no filter - which is the
+        # point of not defaulting them to medium.
+        issues = [issue for issue in issues if priority_of(issue) == priority]
 
     # Stable sort, and the list is already in id order, so ids stay ordered
     # inside each group.
@@ -115,7 +148,8 @@ def list_issues(status=None, as_json=False):
 
     if not issues:
         # Two different empty cases: nothing at all, or nothing matching.
-        print("No issues yet - run: issue create" if status is None else f"No {status} issues")
+        wanted = " ".join(word for word in (priority, status) if word)
+        print(f"No {wanted} issues" if wanted else "No issues yet - run: issue create")
         return
 
     # Widen each column to fit its longest value, so nothing gets truncated.
@@ -126,9 +160,13 @@ def list_issues(status=None, as_json=False):
     id_width = max(len("ID"), *(len(issue["id"]) for issue in issues)) + 2
     width = max(len("TITLE"), *(len(issue["title"]) for issue in issues)) + 2
     status_width = max(len("STATUS"), *(len(issue["status"]) for issue in issues)) + 2
+    priority_width = max(len("PRIORITY"), *(len(priority_of(issue)) for issue in issues)) + 2
 
-    print(f"{'ID':<{id_width}}{'TITLE':<{width}}{'STATUS':<{status_width}}CREATED AT")
-    print_rows(issues, id_width, width, status_width)
+    print(
+        f"{'ID':<{id_width}}{'TITLE':<{width}}{'STATUS':<{status_width}}"
+        f"{'PRIORITY':<{priority_width}}CREATED AT"
+    )
+    print_rows(issues, id_width, width, status_width, priority_width)
 
 
 def view_issue(id, as_json=False):
@@ -148,12 +186,16 @@ def view_issue(id, as_json=False):
         return
 
     table = Table(show_header=True, header_style="bold cyan")
-    for name in ("ID" , "STATUS", "CREATED AT", "UPDATED AT"):
+    for name in ("ID" , "STATUS", "PRIORITY", "CREATED AT", "UPDATED AT"):
         table.add_column(name)
     # Issues written before updated_at existed have none - say so rather than
     # inventing a time we never recorded.
     table.add_row(
-        issue["id"], issue["status"], issue["created_at"], issue.get("updated_at", "unknown")
+        issue["id"],
+        issue["status"],
+        priority_of(issue),
+        issue["created_at"],
+        issue.get("updated_at", "unknown"),
     )
     console.print(table)
     console.print(Markdown(issue["body"]))

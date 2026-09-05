@@ -1,0 +1,80 @@
+"""Checks for issue priority.
+
+The branch worth checking is the old issues: thirteen files on disk have no
+priority field, and the rule is that missing is missing - they still list, they
+show "-", and they match no --priority filter.
+
+Run: uv run python test_priority.py
+"""
+
+import contextlib
+import io
+import os
+import sys
+import tempfile
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src"))
+
+from cli_issue_tracker.issues import create_issue, list_issues
+from cli_issue_tracker.storage import parse_issue, write_issue
+
+
+def run(function, *args, **kwargs):
+    """Returns (exit code or None, stdout). The exit code is the whole point of
+    the validators, so it cannot be swallowed."""
+    out = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+            function(*args, **kwargs)
+    except SystemExit as exit:
+        return exit.code, out.getvalue()
+    return None, out.getvalue()
+
+
+def demo():
+    with tempfile.TemporaryDirectory() as tmp:
+        os.environ["ISSUES_DIR"] = tmp
+        try:
+            # An issue from before the field existed: no priority key at all.
+            write_issue(
+                {
+                    "id": "ISS-001",
+                    "status": "open",
+                    "created_at": "2026-01-01T00:00:00+06:00",
+                    "body": "# Old issue\n\nFiled before priorities.",
+                }
+            )
+            run(create_issue, "Login bug", "...", "high")
+
+            filed = parse_issue(os.path.join(tmp, "ISS-002.md"))
+            assert filed["priority"] == "high", filed
+            assert parse_issue(os.path.join(tmp, "ISS-001.md")).get("priority") is None
+
+            # A word that is not a priority fails before anything is written -
+            # otherwise a typo burns an id.
+            code, _ = run(create_issue, "Typo", "...", "urgent")
+            assert code == 1, code
+            assert not os.path.exists(os.path.join(tmp, "ISS-003.md")), "id was burned"
+            assert run(list_issues, None, "urgent")[0] == 1, "bad filter must exit 1"
+
+            # Both issues list; the old one shows "-" rather than a priority
+            # nobody set.
+            _, table = run(list_issues)
+            assert "PRIORITY" in table, table
+            assert "high" in table and "-" in table, table
+
+            _, only_high = run(list_issues, None, "high")
+            assert "ISS-002" in only_high and "ISS-001" not in only_high, only_high
+
+            # No issue matches, and the message says what was asked for.
+            _, empty = run(list_issues, None, "low")
+            assert empty.strip() == "No low issues", empty
+            _, empty = run(list_issues, "closed", "low")
+            assert empty.strip() == "No low closed issues", empty
+        finally:
+            os.environ.pop("ISSUES_DIR", None)
+    print("ok")
+
+
+if __name__ == "__main__":
+    demo()
