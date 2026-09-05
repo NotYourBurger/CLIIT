@@ -156,15 +156,26 @@ def set_status(ids: list[str], status: str):
     # so a typo must not reach the file. One bad word, one error line.
     require_status(status)
 
+    missing = []
     for id in ids:
         issue = read_issue(id)
         if issue is None:
             # Keep going: one bad id in a batch should not cancel the rest.
+            # The exit code carries the failure instead, once, at the end.
             print(f"Issue {id} Was Not Found", file=sys.stderr)
+            missing.append(id)
             continue
         if issue["status"] == status:
+            # Already there is success - the status the caller asked for is the
+            # status on disk, which is all `set` promises.
             print(f"Issue {id} has already been {status}")
         else:
             issue["status"] = status
             write_issue(issue)
             print(f"{id} has been {status}")
+
+    # Partial failure is failure: `issue set A B closed && git commit` must not
+    # commit when B was never set. The good ids are still written - the batch
+    # ran to the end first.
+    if missing:
+        sys.exit(1)
