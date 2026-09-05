@@ -8,8 +8,31 @@ def now() -> str:
     """The one timestamp format on disk - local time, second precision."""
     return datetime.now().astimezone().isoformat(timespec="seconds")
 
+def local_issues_dir() -> str:
+    """The .issues/ right here, without walking up - what `issue init` creates."""
+    return os.environ.get("ISSUES_DIR") or os.path.join(os.getcwd(), ISSUES_DIR)
+
 def issues_dir() -> str:
-    return os.path.join(os.getcwd(), ISSUES_DIR)
+    """The .issues/ every command reads: $ISSUES_DIR, else the nearest one at or
+    above the cwd. Walking up is what makes the tool work from a subdirectory,
+    the way git finds .git and cargo finds Cargo.toml - resolving it from the cwd
+    alone meant one `cd src` and the tracker was gone. It walks past a .git
+    boundary on purpose: a .issues/ further up is still the tracker you meant,
+    and there is no case yet that wants two. With none anywhere it returns the
+    local path, so require_issue_dir still reports the same 'run issue init'."""
+    if "ISSUES_DIR" in os.environ:
+        return os.environ["ISSUES_DIR"]
+    path = os.getcwd()
+    while True:
+        candidate = os.path.join(path, ISSUES_DIR)
+        if os.path.isdir(candidate):
+            return candidate
+        parent = os.path.dirname(path)
+        # At the filesystem root dirname stops changing - that is the stop, not
+        # a path comparison against "/" that is wrong on Windows.
+        if parent == path:
+            return local_issues_dir()
+        path = parent
 
 def require_issue_dir() -> str:
     """The .issues/ path, or exit 1. Nothing this tool does works without the

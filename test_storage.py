@@ -12,7 +12,7 @@ import os
 import shutil
 import tempfile
 
-from cli_issue_tracker.storage import parse_issue, write_issue
+from cli_issue_tracker.storage import issues_dir, parse_issue, write_issue
 
 REPO = os.path.dirname(os.path.abspath(__file__))
 
@@ -62,9 +62,10 @@ if __name__ == "__main__":
     with tempfile.TemporaryDirectory() as tmp:
         issues = os.path.join(tmp, ".issues")
         os.makedirs(issues)
-        # write_issue resolves .issues/ from the cwd, so the test has to move
-        # into a scratch repo - never write against the real .issues/.
-        os.chdir(tmp)
+        # $ISSUES_DIR is what keeps this test off the real .issues/ - it is
+        # checked before the walk up, so pointing the tool at a scratch
+        # directory no longer means chdir-ing into one.
+        os.environ["ISSUES_DIR"] = issues
         try:
 
             def write_raw(name, text):
@@ -140,6 +141,25 @@ if __name__ == "__main__":
                 "---",
             ], head
 
+            # 5. issues_dir walks up, so every command works from a
+            #    subdirectory, and $ISSUES_DIR wins over the walk - which is
+            #    what every check above relies on.
+            del os.environ["ISSUES_DIR"]
+            deep = os.path.join(tmp, "src", "pkg")
+            os.makedirs(deep)
+            os.chdir(deep)
+            assert issues_dir() == issues, "did not walk up to the parent .issues/"
+            os.environ["ISSUES_DIR"] = os.path.join(tmp, "elsewhere")
+            assert issues_dir() != issues, "$ISSUES_DIR did not win over the walk"
+            del os.environ["ISSUES_DIR"]
+
+            # With no .issues/ anywhere the walk has to stop at the filesystem
+            # root rather than spin forever on dirname(root) - reaching the next
+            # line at all is the check.
+            os.chdir(tempfile.gettempdir())
+            issues_dir()
+
         finally:
             os.chdir(original)
+            os.environ.pop("ISSUES_DIR", None)
     print("ok")

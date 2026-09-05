@@ -24,6 +24,12 @@ issue set ISS-001 ISS-002 closed    # set the status of one or more issues
 Statuses are `in-progress`, `open` and `closed`. `issue list` groups them in that
 order with a rule between groups, so what you are working on stays at the top.
 
+Every command except `init` finds `.issues/` by walking up from the current
+directory, the way `git` finds `.git`, so they all work from anywhere in the
+repo. `init` is deliberately local — it creates `.issues/` right where you are,
+and warns if there is already one above it. Set `ISSUES_DIR` to point the tool at
+a specific directory and skip the walk entirely.
+
 ## File format
 
 Each issue is one Markdown file with YAML-style frontmatter:
@@ -52,9 +58,9 @@ reuses a live id.
 | --------------- | ------------------------------------------------------ |
 | `cli.py`        | Typer commands                                         |
 | `issues.py`     | what each command does and how output looks            |
-| `storage.py`    | where issues live on disk and the file format          |
+| `storage.py`    | finding `.issues/`, and the file format                 |
 | `convert_id.py` | allocating the next `ISS-NNN`                          |
-| `init.py`       | creating `.issues/`                                    |
+| `init.py`       | creating `.issues/` here, and only here                |
 
 ## Status
 
