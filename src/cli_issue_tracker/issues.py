@@ -192,8 +192,11 @@ def log_issue(id):
         sys.exit(1)
 
     # -- before the path so an id that looks like a revision cannot be read as one.
+    # encoding: git writes UTF-8; text=True alone decodes with the locale
+    # default, which is cp1252 here and turns every accent into mojibake at
+    # exit 0. Same reason storage.py passes it to every open().
     git = ["git", "log", "--follow", "--date=short", "--format=%h  %ad  %s", "--", file_path]
-    result = subprocess.run(git, capture_output=True, text=True)
+    result = subprocess.run(git, capture_output=True, text=True, encoding="utf-8")
     if result.returncode != 0:
         # Not a git repo, or the file is outside it - git already said which.
         print(result.stderr.strip() or "git log failed", file=sys.stderr)
@@ -209,7 +212,10 @@ def log_issue(id):
     # Edits that are not committed yet are invisible above. Say so on stderr,
     # so it is a note to the reader and not a row to whatever is parsing stdout.
     pending = subprocess.run(
-        ["git", "status", "--porcelain", "--", file_path], capture_output=True, text=True
+        ["git", "status", "--porcelain", "--", file_path],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
     )
     if pending.stdout.strip():
         print(f"({id} has uncommitted changes, not shown above)", file=sys.stderr)

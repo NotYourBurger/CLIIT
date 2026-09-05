@@ -18,14 +18,16 @@ def run(*args):
 
 
 def log(id):
-    """Returns (exit code or None, stdout)."""
-    out = io.StringIO()
+    """Returns (exit code or None, stdout, stderr). stderr matters: once the
+    repo has a commit, a missing id and a never-committed file both exit 1, so
+    the message is the only thing that says which branch ran."""
+    out, err = io.StringIO(), io.StringIO()
     try:
-        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             log_issue(id)
     except SystemExit as exit:
-        return exit.code, out.getvalue()
-    return None, out.getvalue()
+        return exit.code, out.getvalue(), err.getvalue()
+    return None, out.getvalue(), err.getvalue()
 
 
 def demo():
@@ -39,17 +41,32 @@ def demo():
             os.makedirs(".issues")
             os.environ["ISSUES_DIR"] = os.path.join(tmp, ".issues")
 
-            assert log("ISS-404")[0] == 1, "a missing id must fail, not print an empty log"
-
+            # Commit first. In a repo with no commits at all `git log` fails
+            # outright (returncode 128), so every case below would exit 1
+            # through the git-failed branch and the two branches these lines
+            # are here to cover would never run.
             write_issue({"id": "ISS-001", "status": "open", "created_at": "x",
                          "body": "# Title\n\nbody"})
-            assert log("ISS-001")[0] == 1, "an uncommitted file has no history - must fail"
-
             run("git", "add", "-A")
-            run("git", "commit", "-m", "first commit")
-            code, out = log("ISS-001")
+            run("git", "commit", "-m", "Résumé — naïve café")
+
+            code, out, _ = log("ISS-001")
             assert code is None, f"a committed issue must succeed, got exit {code}"
-            assert "first commit" in out, out
+            # Non-ASCII survives the subprocess decode - git writes UTF-8 and
+            # the locale default here does not.
+            assert "Résumé — naïve café" in out, out
+
+            # Both of these reach git with a path it has no history for, which
+            # now returns 0 and an empty log rather than failing.
+            code, _, err = log("ISS-404")
+            assert code == 1, "a missing id must fail, not print an empty log"
+            assert "Doesnt Exist" in err, f"a missing id must say so, said: {err!r}"
+
+            write_issue({"id": "ISS-002", "status": "open", "created_at": "x",
+                         "body": "# Uncommitted\n\nbody"})
+            code, _, err = log("ISS-002")
+            assert code == 1, "an uncommitted file has no history - must fail"
+            assert "never been committed" in err, f"said: {err!r}"
         finally:
             os.chdir(original)
             os.environ.pop("ISSUES_DIR", None)
