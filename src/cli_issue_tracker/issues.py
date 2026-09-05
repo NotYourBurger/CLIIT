@@ -1,5 +1,6 @@
 import json
 import os
+import subprocess
 import sys
 
 
@@ -179,3 +180,36 @@ def set_status(ids: list[str], status: str):
     # ran to the end first.
     if missing:
         sys.exit(1)
+
+
+def log_issue(id):
+    """`git log` for one issue file. The history is already in the repo because
+    issues are files - this only points git at the right path and gets out of
+    the way. No parsing of git's output: --format is the whole formatter."""
+    file_path = os.path.join(require_issue_dir(), f"{id}.md")
+    if not os.path.isfile(file_path):
+        print(f"Issue {id} Doesnt Exist", file=sys.stderr)
+        sys.exit(1)
+
+    # -- before the path so an id that looks like a revision cannot be read as one.
+    git = ["git", "log", "--follow", "--date=short", "--format=%h  %ad  %s", "--", file_path]
+    result = subprocess.run(git, capture_output=True, text=True)
+    if result.returncode != 0:
+        # Not a git repo, or the file is outside it - git already said which.
+        print(result.stderr.strip() or "git log failed", file=sys.stderr)
+        sys.exit(1)
+    if not result.stdout.strip():
+        # An empty log is not a successful one: the file exists but git has
+        # never seen it, and printing nothing at exit 0 looks like no history.
+        print(f"Issue {id} has never been committed", file=sys.stderr)
+        sys.exit(1)
+
+    print(result.stdout, end="")
+
+    # Edits that are not committed yet are invisible above. Say so on stderr,
+    # so it is a note to the reader and not a row to whatever is parsing stdout.
+    pending = subprocess.run(
+        ["git", "status", "--porcelain", "--", file_path], capture_output=True, text=True
+    )
+    if pending.stdout.strip():
+        print(f"({id} has uncommitted changes, not shown above)", file=sys.stderr)

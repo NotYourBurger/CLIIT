@@ -3,6 +3,7 @@ from cli_issue_tracker.issues import create_issue
 from cli_issue_tracker.issues import list_issues
 from cli_issue_tracker.issues import view_issue
 from cli_issue_tracker.issues import set_status
+from cli_issue_tracker.issues import log_issue
 from cli_issue_tracker.init import init
 import sys
 app = typer.Typer()
@@ -38,3 +39,7 @@ def view(id, as_json: bool = typer.Option(False, "--json", help="Print the issue
 @app.command("set")
 def set_command(ids: list[str], status: str):
     set_status(ids, status)
+
+@app.command("log")
+def log(id):
+    log_issue(id)

@@ -19,6 +19,7 @@ issue list                          # every issue, grouped by status
 issue list open                     # only one status: in-progress, open or closed
 issue view ISS-001                  # render the issue as formatted Markdown
 issue set ISS-001 ISS-002 closed    # set the status of one or more issues
+issue log ISS-001                   # the issue's git history: who changed it, when, why
 ```
 
 Statuses are `in-progress`, `open` and `closed`. `issue list` groups them in that
@@ -62,8 +63,13 @@ reuses a live id.
 | `convert_id.py` | allocating the next `ISS-NNN`                          |
 | `init.py`       | creating `.issues/` here, and only here                |
 
+`issue log` is `git log --follow` pointed at the issue file — the history comes
+free from issues being files. Uncommitted edits are invisible to git, so it says
+so rather than looking like nothing changed.
+
 ## Status
 
-Working: `init`, `create`, `list`, `view`, `set`.
+Working: `init`, `create`, `list`, `view`, `set`, `log`.
 
-Run the file-format round trip checks with `uv run python test_storage.py`.
+Run the checks with `uv run python test_storage.py` (file format round trips) and
+`uv run python test_log.py` (`issue log` against a throwaway git repo).
