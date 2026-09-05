@@ -63,10 +63,10 @@ def require_status(status):
         sys.exit(1)
 
 
-def print_rows(issues, width, status_width):
+def print_rows(issues, id_width, width, status_width):
 
     rule = "-" * (
-        9 + width + status_width + max(len(issue["created_at"]) for issue in issues)
+        id_width + width + status_width + max(len(issue["created_at"]) for issue in issues)
     )
     previous = None
     for issue in issues:
@@ -74,7 +74,7 @@ def print_rows(issues, width, status_width):
         if previous is not None and issue["status"] != previous:
             print(rule)
         print(
-            f"{issue['id']:<9}{issue['title']:<{width}}{issue['status']:<{status_width}}{issue['created_at']}"
+            f"{issue['id']:<{id_width}}{issue['title']:<{width}}{issue['status']:<{status_width}}{issue['created_at']}"
         )
         previous = issue["status"]
 
@@ -89,7 +89,11 @@ def list_issues(status=None, as_json=False):
     path = require_issue_dir()
     issues = []
     for filename in sorted(os.listdir(path)):
-        if filename.startswith("ISS-") and filename.endswith(".md"):
+        # No prefix test: parse_issue already returns None for anything
+        # without our frontmatter, so it is the one thing deciding what is an
+        # issue. Dropping the check is what lets a renamed prefix keep listing
+        # the issues filed under the old one.
+        if filename.endswith(".md"):
             issue = parse_issue(os.path.join(path, filename))
             if issue is not None:
                 issues.append(issue)
@@ -117,11 +121,14 @@ def list_issues(status=None, as_json=False):
     # Widen each column to fit its longest value, so nothing gets truncated.
     # Computed across every issue being shown, so all groups share one set of
     # column positions.
+    # ID is measured like the others rather than fixed - the prefix is
+    # configurable, so "ISS-001" is not the only width an id comes in.
+    id_width = max(len("ID"), *(len(issue["id"]) for issue in issues)) + 2
     width = max(len("TITLE"), *(len(issue["title"]) for issue in issues)) + 2
     status_width = max(len("STATUS"), *(len(issue["status"]) for issue in issues)) + 2
 
-    print(f"{'ID':<9}{'TITLE':<{width}}{'STATUS':<{status_width}}CREATED AT")
-    print_rows(issues, width, status_width)
+    print(f"{'ID':<{id_width}}{'TITLE':<{width}}{'STATUS':<{status_width}}CREATED AT")
+    print_rows(issues, id_width, width, status_width)
 
 
 def view_issue(id, as_json=False):

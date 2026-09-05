@@ -1,15 +1,20 @@
 import os
 
+from cli_issue_tracker.storage import id_prefix
+
 
 def next_id(issues_dir: str) -> str:
-    """Next free ISS-NNN id: one past the highest already in issues_dir."""
+    """Next free id: one past the highest already in issues_dir under the
+    current prefix. Ids carrying some other prefix are counted separately, so
+    switching prefixes does not renumber on top of the issues already there."""
+    prefix = id_prefix()
     nums = []
     for name in os.listdir(issues_dir):
         stem, ext = os.path.splitext(name)
-        prefix, _, num = stem.partition("-")
-        if ext == ".md" and prefix == "ISS" and num.isdigit():
+        head, _, num = stem.partition("-")
+        if ext == ".md" and head == prefix and num.isdigit():
             nums.append(int(num))
-    return f"ISS-{max(nums, default=0) + 1:03d}"
+    return f"{prefix}-{max(nums, default=0) + 1:03d}"
 
 
 if __name__ == "__main__":
@@ -27,4 +32,17 @@ if __name__ == "__main__":
         touch(d, "notes.txt")
         touch(d, "ISS-abc.md")
         assert next_id(d) == "ISS-010", "non-issue files are ignored"
+
+        # A different prefix numbers from its own ids, not from the ISS ones
+        # sitting next to it - otherwise switching prefix skips 001-009 for
+        # no reason, and switching back would collide.
+        os.environ["ISSUE_PREFIX"] = "BUG"
+        try:
+            assert next_id(d) == "BUG-001", "a new prefix starts at 001"
+            touch(d, "BUG-001.md")
+            assert next_id(d) == "BUG-002"
+            os.environ["ISSUE_PREFIX"] = "ISS"
+            assert next_id(d) == "ISS-010", "BUG ids must not bump the ISS count"
+        finally:
+            os.environ.pop("ISSUE_PREFIX", None)
     print("ok")

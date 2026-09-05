@@ -4,6 +4,17 @@ from datetime import datetime
 
 ISSUES_DIR = ".issues"
 
+def id_prefix() -> str:
+    """The letters in front of every id. One source, read by next_id when it
+    allocates and by nothing else - list, view, set and log all work off the
+    filename or the frontmatter, so they never need to know it. Configured the
+    way the directory is, by environment variable, because that is the knob
+    this tool already has and a second mechanism for one string is not worth
+    it. Changing it mid-project is safe: existing issues keep their own prefix
+    and still list, and numbering restarts under the new one without colliding
+    on disk."""
+    return os.environ.get("ISSUE_PREFIX", "ISS")
+
 def now() -> str:
     """The one timestamp format on disk - local time, second precision."""
     return datetime.now().astimezone().isoformat(timespec="seconds")
