@@ -91,6 +91,12 @@ def demo():
             _, said = run(set_fields, ["ISS-002", "open"], "medium")
             assert "is already open, priority medium" in said, said
 
+            # Half of it already true: the message must report what moved, not
+            # what was asked for.
+            _, said = run(set_fields, ["ISS-002", "open"], "low")
+            assert "has been set to priority low" in said, said
+            assert "open" not in said, said
+
             # Nothing asked for, and a mistyped status - which is the same
             # branch, because a word that is not a status was read as an id.
             assert run(set_fields, ["ISS-001"])[0] == 1
