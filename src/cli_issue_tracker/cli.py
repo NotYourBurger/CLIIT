@@ -7,7 +7,11 @@ from cli_issue_tracker.issues import log_issue
 from cli_issue_tracker.init import init
 import sys
 app = typer.Typer()
+# Both streams, not just stdout. The console default here is cp1252, so a
+# non-ASCII git message or issue title printed as an error came out mangled -
+# quietly, because stderr defaults to backslashreplace instead of raising.
 sys.stdout.reconfigure(encoding="utf-8")
+sys.stderr.reconfigure(encoding="utf-8")
 
 @app.callback()
 def main():

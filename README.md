@@ -77,5 +77,12 @@ so rather than looking like nothing changed.
 
 Working: `init`, `create`, `list`, `view`, `set`, `log`.
 
-Run the checks with `uv run python test_storage.py` (file format round trips) and
-`uv run python test_log.py` (`issue log` against a throwaway git repo).
+Run the checks with `uv run python test_storage.py` (file format round trips),
+`uv run python test_log.py` (`issue log` against a throwaway git repo) and
+`uv run python test_encoding.py`.
+
+That last one exists because the same mistake landed three times: this machine
+defaults to cp1252, so anything reading or writing text without being told
+UTF-8 mangles accents quietly and still exits 0. It parses the source and fails
+on any `open()` or `subprocess` call that takes the locale default, rather than
+waiting for a fourth bug report.
