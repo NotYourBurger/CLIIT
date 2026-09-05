@@ -30,16 +30,20 @@ THEME = Theme(
 
 console = Console(theme=THEME)
 
-def create_issue(title: str, description: str, priority: str = "medium"):
+def create_issue(title: str, description: str, priority: str = "medium", labels=()):
 
     # Before the id is allocated: a rejected create must not burn a number.
     require_priority(priority)
+    labels = clean_labels(labels)
     path = require_issue_dir()
     issue = {
         "id": next_id(path),
         "created_at": now(),
         "status": "open",
         "priority": priority,
+        # No labels means no field, not an empty one - the same rule the issues
+        # that predate priority live by.
+        **({"labels": ", ".join(labels)} if labels else {}),
         "body": f"# {title}\n\n{description}",
     }
     write_issue(issue)
@@ -47,16 +51,11 @@ def create_issue(title: str, description: str, priority: str = "medium"):
 
 
 STATUSES = ("in-progress", "open", "closed") ## Ordering
-
-
-def rank(issue):
-    """Sort key: position in STATUSES. Anything we never wrote sorts to the end
-    rather than vanishing from the list."""
-    status = issue["status"]
-    return STATUSES.index(status) if status in STATUSES else len(STATUSES) #sorting the issues based on the STATUS ordering
+STATUS_ORDER = STATUSES[::-1]  # least urgent first: closed, open, in-progress
 
 
 PRIORITIES = ("high", "medium", "low")
+PRIORITY_ORDER = ("-",) + PRIORITIES[::-1]  # no priority, then low, medium, high
 
 
 def priority_of(issue):
@@ -66,12 +65,73 @@ def priority_of(issue):
     return issue.get("priority", "-")
 
 
+def labels_of(issue):
+    """The labels field as a list. Flat frontmatter has no list type, so the
+    file holds one comma-joined string and this is the only place that knows
+    it. Absent, empty and blank all read back as no labels."""
+    return [word.strip() for word in issue.get("labels", "").split(",") if word.strip()]
+
+
+def clean_labels(words):
+    """User words in, storable labels out: stripped, lowercased, deduped and
+    sorted. Sorted because the file is read by humans and diffed by git, and
+    an insertion-ordered list reorders itself for no reason.
+
+    A comma is the delimiter, so a label cannot contain one - that is the whole
+    validation. Unlike status and priority there is no list to check against:
+    inventing the words is the point of labels."""
+    labels = set()
+    for word in words:
+        label = word.strip().lower()
+        if not label:
+            print("A label cannot be empty", file=sys.stderr)
+            sys.exit(1)
+        if "," in label:
+            print(
+                f"A label cannot contain a comma - {word!r} is the separator "
+                "between two labels, so pass them as two --label flags",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        labels.add(label)
+    return sorted(labels)
+
+
+def rank(issue):
+    """Sort key: least urgent first, so the list reads bottom-up. A terminal
+    leaves the last line printed right above the prompt, which is where the eye
+    already is - putting closed issues there and making you scroll for the
+    in-progress one had it backwards.
+
+    Both orders are the existing tuples reversed, so there is still one place
+    that says what order statuses and priorities come in. Anything we never
+    wrote - an unknown status, a hand-typed priority - sorts to the very top,
+    which is the low-attention end.
+
+    Ties keep id order, and the sort is stable, so the newest issue of a group
+    is the one nearest the prompt."""
+    status = issue["status"]
+    priority = priority_of(issue)
+    return (
+        STATUS_ORDER.index(status) if status in STATUS_ORDER else -1,
+        PRIORITY_ORDER.index(priority) if priority in PRIORITY_ORDER else -1,
+    )
+
+
 def describe(fields):
     """`{"status": "closed", "priority": "high"}` as "closed, priority high" -
-    status reads as itself, priority needs the word to make sense."""
-    return ", ".join(
-        value if field == "status" else f"{field} {value}" for field, value in fields.items()
-    )
+    status reads as itself, the others need the word to make sense. Labels are
+    bracketed because their value has commas in it and the fields are joined
+    with commas too."""
+    said = []
+    for field, value in fields.items():
+        if field == "status":
+            said.append(value)
+        elif field == "labels":
+            said.append(f"labels [{value}]" if value else "no labels")
+        else:
+            said.append(f"{field} {value}")
+    return ", ".join(said)
 
 
 def require_status(status):
@@ -93,28 +153,52 @@ def require_priority(priority):
         sys.exit(1)
 
 
-def print_rows(issues, id_width, width, status_width, priority_width):
+COLUMNS = (
+    ("ID", lambda issue: issue["id"]),
+    ("TITLE", lambda issue: issue["title"]),
+    ("STATUS", lambda issue: issue["status"]),
+    ("PRIORITY", priority_of),
+    ("CREATED AT", lambda issue: issue["created_at"]),
+    ("LABELS", lambda issue: ", ".join(labels_of(issue))),
+)
 
-    rule = "-" * (
-        id_width
-        + width
-        + status_width
-        + priority_width
-        + max(len(issue["created_at"]) for issue in issues)
-    )
+
+def print_table(issues):
+    """The list, as aligned columns. Each column is as wide as its widest
+    value, so nothing is truncated; the last one is not padded, so a long
+    value there cannot push anything off the terminal. That is why LABELS is
+    last - it is the column with no bound on its width, and a repo that does
+    not use labels does not get an empty column at all."""
+    columns = [
+        (name, value)
+        for name, value in COLUMNS
+        if name != "LABELS" or any(labels_of(issue) for issue in issues)
+    ]
+    widths = [
+        max(len(name), *(len(value(issue)) for issue in issues)) + 2 for name, value in columns
+    ]
+
+    def row(cells):
+        # The last cell is printed as-is: padding it would only add trailing
+        # spaces, and it is the one column allowed to run long.
+        padded = [f"{cell:<{width}}" for cell, width in zip(cells[:-1], widths)]
+        # rstrip: an issue with no labels would otherwise end in the padding of
+        # the column before it.
+        return ("".join(padded) + cells[-1]).rstrip()
+
+    print(row([name for name, _ in columns]))
+
+    rule = "-" * (sum(widths[:-1]) + max(len(columns[-1][1](issue)) for issue in issues))
     previous = None
     for issue in issues:
         # Not on the first row: previous is None only before anything is printed.
         if previous is not None and issue["status"] != previous:
             print(rule)
-        print(
-            f"{issue['id']:<{id_width}}{issue['title']:<{width}}{issue['status']:<{status_width}}"
-            f"{priority_of(issue):<{priority_width}}{issue['created_at']}"
-        )
+        print(row([value(issue) for _, value in columns]))
         previous = issue["status"]
 
 
-def list_issues(status=None, priority=None, as_json=False):
+def list_issues(status=None, priority=None, labels=(), as_json=False):
     # Reject a bad word before touching the disk - "issue list opne" should say so,
     # not print an empty table and look like there is nothing to do. None is the
     # no-filter case, which is legitimate, so it skips the check.
@@ -122,6 +206,7 @@ def list_issues(status=None, priority=None, as_json=False):
         require_status(status)
     if priority is not None:
         require_priority(priority)
+    labels = clean_labels(labels)
 
     path = require_issue_dir()
     issues = []
@@ -141,6 +226,12 @@ def list_issues(status=None, priority=None, as_json=False):
         # Issues filed before the field existed match no filter - which is the
         # point of not defaulting them to medium.
         issues = [issue for issue in issues if priority_of(issue) == priority]
+    if labels:
+        # Every label given, not any of them: repeating a filter flag narrows,
+        # the way adding --priority to a status does.
+        issues = [
+            issue for issue in issues if set(labels) <= set(labels_of(issue))
+        ]
 
     # Stable sort, and the list is already in id order, so ids stay ordered
     # inside each group.
@@ -151,30 +242,26 @@ def list_issues(status=None, priority=None, as_json=False):
     if as_json:
         # Before the empty check on purpose: "no issues" is [] to a script, not
         # a sentence it would choke on.
-        print(json.dumps(issues, indent=2))
+        print(json.dumps([as_dict(issue) for issue in issues], indent=2))
         return
 
     if not issues:
         # Two different empty cases: nothing at all, or nothing matching.
-        wanted = " ".join(word for word in (priority, status) if word)
+        wanted = " ".join(word for word in (priority, status, *labels) if word)
         print(f"No {wanted} issues" if wanted else "No issues yet - run: issue create")
         return
 
-    # Widen each column to fit its longest value, so nothing gets truncated.
-    # Computed across every issue being shown, so all groups share one set of
-    # column positions.
-    # ID is measured like the others rather than fixed - the prefix is
-    # configurable, so "ISS-001" is not the only width an id comes in.
-    id_width = max(len("ID"), *(len(issue["id"]) for issue in issues)) + 2
-    width = max(len("TITLE"), *(len(issue["title"]) for issue in issues)) + 2
-    status_width = max(len("STATUS"), *(len(issue["status"]) for issue in issues)) + 2
-    priority_width = max(len("PRIORITY"), *(len(priority_of(issue)) for issue in issues)) + 2
+    print_table(issues)
 
-    print(
-        f"{'ID':<{id_width}}{'TITLE':<{width}}{'STATUS':<{status_width}}"
-        f"{'PRIORITY':<{priority_width}}CREATED AT"
-    )
-    print_rows(issues, id_width, width, status_width, priority_width)
+
+def as_dict(issue):
+    """The issue as JSON wants it, which is not quite as the file holds it:
+    labels come out as an array. Splitting a string every consumer would have
+    to split itself is worth the one place the output stops being a literal
+    transcript of the frontmatter."""
+    if "labels" not in issue:
+        return issue
+    return {**issue, "labels": labels_of(issue)}
 
 
 def view_issue(id, as_json=False):
@@ -190,42 +277,62 @@ def view_issue(id, as_json=False):
     if as_json:
         # body included verbatim - it is the field the table cannot carry and
         # the one an external reader actually wants.
-        print(json.dumps(issue, indent=2))
+        print(json.dumps(as_dict(issue), indent=2))
         return
 
-    table = Table(show_header=True, header_style="bold cyan")
-    for name in ("ID" , "STATUS", "PRIORITY", "CREATED AT", "UPDATED AT"):
-        table.add_column(name)
     # Issues written before updated_at existed have none - say so rather than
-    # inventing a time we never recorded.
-    table.add_row(
-        issue["id"],
-        issue["status"],
-        priority_of(issue),
-        issue["created_at"],
-        issue.get("updated_at", "unknown"),
-    )
+    # inventing a time we never recorded. LABELS only appears when there are
+    # some: this table is already five columns of timestamps that rich has to
+    # elide, and an empty sixth would cost the others width for nothing.
+    fields = [
+        ("ID", issue["id"]),
+        ("STATUS", issue["status"]),
+        ("PRIORITY", priority_of(issue)),
+        ("CREATED AT", issue["created_at"]),
+        ("UPDATED AT", issue.get("updated_at", "unknown")),
+    ]
+    if labels_of(issue):
+        fields.append(("LABELS", ", ".join(labels_of(issue))))
+
+    table = Table(show_header=True, header_style="bold cyan")
+    for name, _ in fields:
+        table.add_column(name)
+    table.add_row(*(value for _, value in fields))
     console.print(table)
     console.print(Markdown(issue["body"]))
     
 
-def set_fields(words: list[str], priority: str = None):
+def set_fields(words: list[str], priority: str = None, add=(), remove=()):
     """`issue set ISS-001 closed`, `issue set ISS-001 --priority high`, or both
     at once. The status stayed a bare word because that is what the README
     documents and what people already type; which word it is, is decided here
     rather than by the parser - click cannot tell a trailing optional word from
     an id when only one word is given, and reads `issue set ISS-001` as a
-    status with no ids."""
+    status with no ids.
+
+    Labels are the field that does not replace: --label adds, --unlabel takes
+    away, and both are computed per issue because the result depends on what
+    that issue already has."""
     ids = list(words)
     status = ids.pop() if ids and ids[-1] in STATUSES else None
+    add, remove = clean_labels(add), clean_labels(remove)
 
-    if status is None and priority is None:
+    both = set(add) & set(remove)
+    if both:
+        print(
+            f"Cannot add and remove the same label: {', '.join(sorted(both))}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    if status is None and priority is None and not add and not remove:
         # Also where a mistyped status lands: it is not a status, so it was
         # read as an id, and nothing was asked for. Saying what the words are
         # beats "Issue opne Was Not Found".
         print(
-            f"Give a status ({', '.join(STATUSES)}) or --priority "
-            f"({', '.join(PRIORITIES)}) - e.g. issue set ISS-001 closed",
+            f"Give a status ({', '.join(STATUSES)}), --priority "
+            f"({', '.join(PRIORITIES)}), --label or --unlabel "
+            "- e.g. issue set ISS-001 closed",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -237,8 +344,8 @@ def set_fields(words: list[str], priority: str = None):
     if priority is not None:
         require_priority(priority)
 
-    wanted = {"status": status, "priority": priority}
-    wanted = {field: value for field, value in wanted.items() if value is not None}
+    fixed = {"status": status, "priority": priority}
+    fixed = {field: value for field, value in fixed.items() if value is not None}
 
     missing = []
     for id in ids:
@@ -249,15 +356,28 @@ def set_fields(words: list[str], priority: str = None):
             print(f"Issue {id} Was Not Found", file=sys.stderr)
             missing.append(id)
             continue
+        wanted = dict(fixed)
+        if add or remove:
+            labels = [label for label in labels_of(issue) if label not in remove]
+            wanted["labels"] = ", ".join(sorted(set(labels + add)))
+
+        # get(field, "") and not get(field): an issue with no labels and a call
+        # that removes its last one both mean "", and that is not a change.
         changed = {
-            field: value for field, value in wanted.items() if issue.get(field) != value
+            field: value for field, value in wanted.items() if issue.get(field, "") != value
         }
         if not changed:
             # Already there is success - what the caller asked for is what is on
             # disk, which is all `set` promises.
             print(f"Issue {id} is already {describe(wanted)}")
         else:
-            issue.update(changed)
+            for field, value in changed.items():
+                # Empty means gone: the last label removed takes the field with
+                # it, rather than leaving "labels:" behind on the file.
+                if value:
+                    issue[field] = value
+                else:
+                    issue.pop(field, None)
             write_issue(issue)
             print(f"{id} has been set to {describe(changed)}")
 

@@ -84,6 +84,15 @@ def demo():
                 "the status word must not touch the priority"
             )
 
+            # Read bottom-up: closed above open, and within a status the
+            # highest priority last, nearest the prompt.
+            run(set_fields, ["ISS-002"], "low")
+            run(create_issue, "Urgent", "...", "high")
+            run(set_fields, ["ISS-001", "closed"])
+            _, table = run(list_issues)
+            rows = [line.split()[0] for line in table.splitlines()[1:] if line.startswith("ISS")]
+            assert rows == ["ISS-001", "ISS-002", "ISS-003"], rows
+
             # Both at once, then the same call again - the second is a no-op
             # that still reports success.
             _, said = run(set_fields, ["ISS-002", "open"], "medium")

@@ -16,26 +16,49 @@ uv sync
 issue init                          # create .issues/ in the current directory
 issue create "Title" "Description"  # write .issues/ISS-001.md
 issue create "Title" "..." --priority high   # high, medium (default) or low, -p for short
+issue create "Title" "..." -l bug -l auth    # labels, repeat the flag for more
 issue list                          # every issue, grouped by status
 issue list open                     # only one status: in-progress, open or closed
 issue list --priority high          # only one priority; combines with a status
+issue list --label bug              # only issues with every label given
 issue view ISS-001                  # render the issue as formatted Markdown
 issue set ISS-001 ISS-002 closed    # set the status of one or more issues
 issue set ISS-001 --priority high   # set the priority instead, or alongside a status
+issue set ISS-001 -l backend -L bug # add a label, remove a label, in one write
 issue log ISS-001                   # the issue's git history: who changed it, when, why
 ```
 
-Statuses are `in-progress`, `open` and `closed`. `issue list` groups them in that
-order with a rule between groups, so what you are working on stays at the top.
+Statuses are `in-progress`, `open` and `closed`. `issue list` groups them with a
+rule between groups and prints them least urgent first — closed, then open, then
+in-progress — with the highest priority last inside each group. The list reads
+bottom-up on purpose: the last line printed sits right above the prompt, which
+is where you are already looking, so what needs attention is there and the
+closed pile is what scrolls away.
 
-Priorities are `high`, `medium` and `low`, set at `create` time and stored as a
-`priority` frontmatter field. They filter and show in a column; they do not
-change the sort order, which stays status-then-id. Issues filed before the field
-existed have no priority: they show `-`, and they match no `--priority` filter
-rather than being counted as `medium`.
+Priorities are `high`, `medium` and `low`, stored as a `priority` frontmatter
+field. They filter, they show in a column, and they are the second sort term
+under status — highest last. Issues filed before the field existed have no
+priority: they show `-`, they sort to the top as the least urgent thing there
+is, and they match no `--priority` filter rather than being counted as
+`medium`.
 
-`issue set` takes either a status, a `--priority`, or both — `issue set ISS-001
-closed --priority low` is one write. The status stays a bare trailing word so
+Labels say what kind of issue it is — `bug`, `auth`, `docs`, whatever you
+invent. They are stored as one comma-joined `labels` field, lowercased, deduped
+and sorted, so a label cannot contain a comma; no labels means no field at all.
+`--label` on `set` adds and `--unlabel` (`-L`) removes, because a label is
+something you learn about an issue after filing it. Removing the last one takes
+the field with it.
+
+`issue list --label bug --label auth` wants both, not either: repeating a filter
+narrows, the way adding `--priority` to a status does. The LABELS column shows
+up only when something has labels, and it is last, so a long label set cannot
+push another column off the screen. `--json` is the one place the output is not
+a literal transcript of the file — labels come out as an array, so nothing
+downstream has to split the string again.
+
+`issue set` takes any of a status, a `--priority`, a `--label`/`--unlabel`, or
+all of them — `issue set ISS-001 closed --priority low -l bug` is one write, and
+it reports only what actually moved. The status stays a bare trailing word so
 the old form keeps working; a word that is not a status is read as an id, so a
 mistyped one gets told which words `set` accepts instead of being written.
 
@@ -61,6 +84,7 @@ id: ISS-001
 status: open
 created_at: 2026-09-04T14:04:43+06:00
 priority: medium
+labels: bug, frontend
 ---
 
 # List View for the Issue Tracker
@@ -94,8 +118,9 @@ Working: `init`, `create`, `list`, `view`, `set`, `log`.
 
 Run the checks with `uv run python test_storage.py` (file format round trips),
 `uv run python test_log.py` (`issue log` against a throwaway git repo),
-`uv run python test_priority.py` (priority, and the issues that predate it) and
-`uv run python test_encoding.py`.
+`uv run python test_priority.py` (priority, and the issues that predate it),
+`uv run python test_labels.py` (labels, the first field that merges instead of
+replacing) and `uv run python test_encoding.py`.
 
 That last one exists because the same mistake landed three times: this machine
 defaults to cp1252, so anything reading or writing text without being told

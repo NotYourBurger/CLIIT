@@ -23,16 +23,18 @@ def create(
     title: str,
     description: str,
     priority: str = typer.Option("medium", "--priority", "-p", help="high, medium or low"),
+    label: list[str] = typer.Option([], "--label", "-l", help="Repeat for more than one"),
 ):
-    create_issue(title, description, priority)
+    create_issue(title, description, priority, label)
 
 @app.command("list")
 def list_projects(
     status: str = typer.Argument(None),
     priority: str = typer.Option(None, "--priority", "-p", help="Only issues with this priority"),
+    label: list[str] = typer.Option([], "--label", "-l", help="Only issues with every label given"),
     as_json: bool = typer.Option(False, "--json", help="Print the issues as JSON"),
 ):
-    list_issues(status, priority, as_json)
+    list_issues(status, priority, label, as_json)
     
 @app.command("init")
 def init_project():
@@ -48,8 +50,10 @@ def set_command(
         ..., metavar="IDS... [STATUS]", help="Issue ids, optionally followed by a status"
     ),
     priority: str = typer.Option(None, "--priority", "-p", help="high, medium or low"),
+    label: list[str] = typer.Option([], "--label", "-l", help="Add a label; repeatable"),
+    unlabel: list[str] = typer.Option([], "--unlabel", "-L", help="Remove a label; repeatable"),
 ):
-    set_fields(words, priority)
+    set_fields(words, priority, label, unlabel)
 
 @app.command("log")
 def log(id):
