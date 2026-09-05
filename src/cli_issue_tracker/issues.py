@@ -65,6 +65,32 @@ def priority_of(issue):
     return issue.get("priority", "-")
 
 
+def assignee_of(issue):
+    """Who owns it, or "-" for nobody. Same shape as priority_of, for the same
+    reason: the reader is scanning a column and an empty cell reads as a
+    rendering bug."""
+    return issue.get("assignee", "-")
+
+
+def current_user():
+    """Who `claim` acts as when --by is not given: $ISSUE_USER, then
+    `git config user.name`, then nothing.
+
+    The name is a string this tool does not verify and cannot: an issue is a
+    file in a git repo, anyone who can write the file can write any name into
+    it. The audit trail already exists and is better - `issue log` says who
+    committed the change. The environment variable is the knob this tool
+    already has twice over, and it is what an agent sets once at the top of a
+    run rather than threading a name through every call."""
+    who = os.environ.get("ISSUE_USER", "").strip()
+    if who:
+        return who
+    git = subprocess.run(
+        ["git", "config", "user.name"], capture_output=True, text=True, encoding="utf-8"
+    )
+    return git.stdout.strip()
+
+
 def set_field(issue, field):
     """A comma-joined frontmatter field as a list. Flat frontmatter has no list
     type, so the file holds one string and this is the only place that knows
@@ -259,6 +285,10 @@ def describe(fields):
             said.append(f"labels [{value}]" if value else "no labels")
         elif field == "blocked_by":
             said.append(f"blocked by [{value}]" if value else "not blocked")
+        elif field == "assignee":
+            # Possessive, not "assigned to X" - "set to assigned to X" reads
+            # badly, and this is the wording `claim` already prints.
+            said.append(f"{value}'s" if value else "unassigned")
         else:
             said.append(f"{field} {value}")
     return ", ".join(said)
@@ -283,13 +313,17 @@ def require_priority(priority):
         sys.exit(1)
 
 
+# name, value, and what "nothing here" looks like. A column with a blank is
+# conditional - it disappears when every row in the result is blank, so a repo
+# that does not use the field does not pay a column for it. None means always.
 COLUMNS = (
-    ("ID", lambda issue: issue["id"]),
-    ("TITLE", lambda issue: issue["title"]),
-    ("STATUS", lambda issue: issue["status"]),
-    ("PRIORITY", priority_of),
-    ("CREATED AT", lambda issue: issue["created_at"]),
-    ("LABELS", lambda issue: ", ".join(labels_of(issue))),
+    ("ID", lambda issue: issue["id"], None),
+    ("TITLE", lambda issue: issue["title"], None),
+    ("STATUS", lambda issue: issue["status"], None),
+    ("PRIORITY", priority_of, None),
+    ("CREATED AT", lambda issue: issue["created_at"], None),
+    ("ASSIGNEE", assignee_of, "-"),
+    ("LABELS", lambda issue: ", ".join(labels_of(issue)), ""),
 )
 
 
@@ -301,8 +335,8 @@ def print_table(issues, notes=None):
     not use labels does not get an empty column at all."""
     columns = [
         (name, value)
-        for name, value in COLUMNS
-        if name != "LABELS" or any(labels_of(issue) for issue in issues)
+        for name, value, blank in COLUMNS
+        if blank is None or any(value(issue) != blank for issue in issues)
     ]
     widths = [
         max(len(name), *(len(value(issue)) for issue in issues)) + 2 for name, value in columns
@@ -350,7 +384,16 @@ def load_issues():
     return issues
 
 
-def select_issues(status=None, priority=None, labels=(), words=(), ready=False, blocked=False):
+def select_issues(
+    status=None,
+    priority=None,
+    labels=(),
+    words=(),
+    ready=False,
+    blocked=False,
+    assignee=None,
+    unassigned=False,
+):
     """The issues passing every filter given, in list order, and every issue by
     id. One function because `list` and `search` narrow by the same fields plus
     a query, and two copies of that filtering drift the first time a new field
@@ -368,6 +411,15 @@ def select_issues(status=None, priority=None, labels=(), words=(), ready=False, 
         require_status(status)
     if priority is not None:
         require_priority(priority)
+    if assignee is not None and unassigned:
+        # No repo state satisfies both, so an empty table would blame the repo
+        # for the caller's mistake.
+        print(
+            "--assignee and --unassigned contradict - one asks for a name, the "
+            "other for no name",
+            file=sys.stderr,
+        )
+        sys.exit(1)
     labels = clean_labels(labels)
 
     everything = load_issues()
@@ -383,6 +435,12 @@ def select_issues(status=None, priority=None, labels=(), words=(), ready=False, 
         # Every label given, not any of them: repeating a filter flag narrows,
         # the way adding --priority to a status does.
         if labels and not set(labels) <= set(labels_of(issue)):
+            continue
+        # Ownership is one name, so both filters are decidable from the issue
+        # in hand - unlike --ready and --blocked below.
+        if assignee is not None and issue.get("assignee") != assignee:
+            continue
+        if unassigned and issue.get("assignee"):
             continue
         if words and not matches(issue, words):
             continue
@@ -430,15 +488,28 @@ def matching_lines(issue, words):
     return lines
 
 
-def narrowing(priority, status, labels, ready=False, blocked=False):
+def narrowing(priority, status, labels, ready=False, blocked=False, assignee=None, unassigned=False):
     """The filters as the words the user typed, for the nothing-found line."""
     words = (priority, status, *clean_labels(labels),
-             "ready" if ready else "", "blocked" if blocked else "")
+             "ready" if ready else "", "blocked" if blocked else "",
+             "unassigned" if unassigned else "", f"{assignee}'s" if assignee else "")
     return " ".join(word for word in words if word)
 
 
-def list_issues(status=None, priority=None, labels=(), as_json=False, ready=False, blocked=False):
-    issues, by_id = select_issues(status, priority, labels, ready=ready, blocked=blocked)
+def list_issues(
+    status=None,
+    priority=None,
+    labels=(),
+    as_json=False,
+    ready=False,
+    blocked=False,
+    assignee=None,
+    unassigned=False,
+):
+    issues, by_id = select_issues(
+        status, priority, labels, ready=ready, blocked=blocked,
+        assignee=assignee, unassigned=unassigned,
+    )
 
     # Everything above collects; everything below renders. --json swaps the
     # renderer and nothing else - same issues, same order, same filter.
@@ -452,7 +523,7 @@ def list_issues(status=None, priority=None, labels=(), as_json=False, ready=Fals
         # Two different empty cases: nothing at all, or nothing matching.
         # Either is exit 0 - a filter matching nothing is a fact about the
         # repo, which is the distinction `search` draws against.
-        wanted = narrowing(priority, status, labels, ready, blocked)
+        wanted = narrowing(priority, status, labels, ready, blocked, assignee, unassigned)
         print(f"No {wanted} issues" if wanted else "No issues yet - run: issue create")
         return
 
@@ -555,6 +626,7 @@ def view_issue(id, as_json=False):
         ("PRIORITY", priority_of(issue)),
         ("CREATED AT", issue["created_at"]),
         ("UPDATED AT", issue.get("updated_at", "unknown")),
+        ("ASSIGNEE", assignee_of(issue)),
     ]
     if labels_of(issue):
         fields.append(("LABELS", ", ".join(labels_of(issue))))
@@ -575,7 +647,16 @@ def view_issue(id, as_json=False):
     console.print(Markdown(issue["body"]))
     
 
-def set_fields(words: list[str], priority: str = None, add=(), remove=(), block=(), unblock=()):
+def set_fields(
+    words: list[str],
+    priority: str = None,
+    add=(),
+    remove=(),
+    block=(),
+    unblock=(),
+    assignee: str = None,
+    quiet: bool = False,
+):
     """`issue set ISS-001 closed`, `issue set ISS-001 --priority high`, or both
     at once. The status stayed a bare word because that is what the README
     documents and what people already type; which word it is, is decided here
@@ -586,10 +667,17 @@ def set_fields(words: list[str], priority: str = None, add=(), remove=(), block=
     Labels and blockers are the fields that do not replace: --label/--unlabel
     and --blocked-by/--unblock are the same add/remove pair, computed per issue
     because the result depends on what that issue already has. Blockers get the
-    validation labels do not need - a label is invented, an id must exist."""
+    validation labels do not need - a label is invented, an id must exist.
+
+    --assignee replaces, like status and priority, and empty clears it - which
+    is all `assign` and `release` are. `claim` is the third way in, and passes
+    quiet because it prints its own line; one function writes the field so the
+    "already assigned" message and the real behaviour cannot drift."""
     ids = list(words)
     status = ids.pop() if ids and ids[-1] in STATUSES else None
     add, remove = clean_labels(add), clean_labels(remove)
+    if assignee is not None:
+        assignee = assignee.strip()
     block, unblock = clean_ids(block), clean_ids(unblock)
 
     both = (set(add) & set(remove)) | (set(block) & set(unblock))
@@ -600,14 +688,19 @@ def set_fields(words: list[str], priority: str = None, add=(), remove=(), block=
         )
         sys.exit(1)
 
-    if status is None and priority is None and not (add or remove or block or unblock):
+    if (
+        status is None
+        and priority is None
+        and assignee is None
+        and not (add or remove or block or unblock)
+    ):
         # Also where a mistyped status lands: it is not a status, so it was
         # read as an id, and nothing was asked for. Saying what the words are
         # beats "Issue opne Was Not Found".
         print(
             f"Give a status ({', '.join(STATUSES)}), --priority "
-            f"({', '.join(PRIORITIES)}), --label, --unlabel, --blocked-by or "
-            "--unblock - e.g. issue set ISS-001 closed",
+            f"({', '.join(PRIORITIES)}), --assignee, --label, --unlabel, "
+            "--blocked-by or --unblock - e.g. issue set ISS-001 closed",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -619,7 +712,7 @@ def set_fields(words: list[str], priority: str = None, add=(), remove=(), block=
     if priority is not None:
         require_priority(priority)
 
-    fixed = {"status": status, "priority": priority}
+    fixed = {"status": status, "priority": priority, "assignee": assignee}
     fixed = {field: value for field, value in fixed.items() if value is not None}
 
     # Every issue, not just the ones named: a blocker's status lives in another
@@ -663,7 +756,8 @@ def set_fields(words: list[str], priority: str = None, add=(), remove=(), block=
         if not changed:
             # Already there is success - what the caller asked for is what is on
             # disk, which is all `set` promises.
-            print(f"Issue {id} is already {describe(wanted)}")
+            if not quiet:
+                print(f"Issue {id} is already {describe(wanted)}")
         else:
             for field, value in changed.items():
                 # Empty means gone: the last label removed takes the field with
@@ -673,7 +767,8 @@ def set_fields(words: list[str], priority: str = None, add=(), remove=(), block=
                 else:
                     issue.pop(field, None)
             write_issue(issue)
-            print(f"{id} has been set to {describe(changed)}")
+            if not quiet:
+                print(f"{id} has been set to {describe(changed)}")
             if changed.get("status") == "closed":
                 closed.append(id)
 
@@ -691,6 +786,60 @@ def set_fields(words: list[str], priority: str = None, add=(), remove=(), block=
     # ran to the end first.
     if missing:
         sys.exit(1)
+
+
+def claim_issue(id, by=None):
+    """The one ownership verb that can fail. `assign` and `release` are
+    spellings of `set --assignee` and win by definition; `claim` is a write
+    with a condition attached, and a command that can be perfectly well formed
+    and still fail is a different contract, worth a different word.
+
+    It succeeds on an issue that is unassigned or already yours, and exits 1
+    naming the owner when it is not - because the next thing the caller does is
+    either pick another issue or go and ask that person.
+
+    A closed issue cannot be claimed: there is nothing to start, and a claim on
+    one is almost always a typo'd id that happens to exist. A blocked one can
+    be - claiming is saying you will do it, which is the reasonable thing to do
+    about work you are waiting on."""
+    who = (by or current_user()).strip()
+    if not who:
+        # Rather than writing an owner nobody can be held to.
+        print(
+            "No name to claim as - pass --by, or set $ISSUE_USER or git config user.name",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    issue = read_issue(id)
+    if issue is None:
+        print(f"Issue {id} Was Not Found", file=sys.stderr)
+        sys.exit(1)
+    if issue["status"] == "closed":
+        print(f"{id} is closed - there is nothing to claim", file=sys.stderr)
+        sys.exit(1)
+    owner = issue.get("assignee")
+    if owner and owner != who:
+        print(f"{id} is already {owner}'s", file=sys.stderr)
+        sys.exit(1)
+
+    set_fields([id], assignee=who, quiet=True)
+
+    # Check-then-write is not atomic and there is no lock to take. Read the
+    # file back: whichever order two writes land in, exactly one caller reads
+    # its own name back, so exactly one is told it succeeded and the other goes
+    # and picks the next row instead of starting the same work.
+    #
+    # ponytail: this closes the window, it does not remove it - a reader
+    # interleaved between another writer's two operations can still be told the
+    # wrong thing, and the fix if it ever matters is an O_EXCL claim file, not
+    # a lock.
+    landed = (read_issue(id) or {}).get("assignee")
+    if landed != who:
+        print(f"{id} is already {landed}'s", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"{id} is now {who}'s")
 
 
 def log_issue(id):

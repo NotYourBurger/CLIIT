@@ -23,6 +23,9 @@ issue list --priority high          # only one priority; combines with a status
 issue list --label bug              # only issues with every label given
 issue list --ready                  # open, and nothing open is in the way
 issue list --blocked                # stuck, and what on
+issue list --assignee tahmid        # what tahmid is on (-a for short)
+issue list --unassigned             # what nobody has taken
+issue list --ready --unassigned --json    # what an agent may safely start
 issue search "verification email"   # every issue whose body or title has both words
 issue search auth --status open -p high   # the same filters list takes, ANDed with the query
 issue view ISS-001                  # render the issue as formatted Markdown
@@ -31,6 +34,10 @@ issue set ISS-001 --priority high   # set the priority instead, or alongside a s
 issue set ISS-001 -l backend -L bug # add a label, remove a label, in one write
 issue set ISS-012 -b ISS-009        # ISS-012 cannot start until ISS-009 closes
 issue set ISS-012 -B ISS-009        # never mind (--blocked-by and --unblock in long form)
+issue claim ISS-021                 # mine, if nobody else got there first
+issue claim ISS-021 --by codex-1    # --by defaults to $ISSUE_USER, then git config user.name
+issue assign ISS-021 --to codex-1   # hand it over, no questions
+issue release ISS-021               # not mine any more
 issue log ISS-001                   # the issue's git history: who changed it, when, why
 ```
 
@@ -123,7 +130,62 @@ someone deletes the field rather than argue with it, and a graph people route
 around is worse than no graph. Closing the last blocker reports what it freed on
 the same run, one line per issue, id first: `ISS-012 is now ready`.
 
-`issue set` takes any of a status, a `--priority`, a `--label`/`--unlabel`, or
+Ownership says who is working on it — the question `--ready` cannot answer,
+because it gives every caller the same answer and two agents asking a second
+apart both start the same issue. It is one `assignee` frontmatter field holding
+one name, deliberately a field and not a label: ownership has an arity, exactly
+one, and "exactly one" is the entire feature — a set cannot hold that rule, and
+two labels named after two people record the collision instead of preventing
+it. It would also mix people into the same namespace as `bug` and `auth`.
+
+`issue claim` is the one with a precondition: it succeeds only if the issue is
+unassigned or already yours, and exits 1 naming the current owner otherwise, so
+the next thing you do is pick another issue or go and ask that person. `assign`
+has no precondition — handing work over is normal, and a tool that makes you
+release first is a tool people work around. `release` clears the field, and
+already-unassigned is success, the same way `set` treats a field that is
+already what you asked for. All three are one write: `assign` is
+`issue set ISS-021 --assignee codex-1` and `release` is the same with an empty
+value, so the messages and the behaviour cannot drift apart.
+
+Check-then-write is not atomic and there is no lock to take, so `claim` writes
+and then reads the file back: if the name that comes back is not yours, you
+lost the race, and it says who won and exits 1. Whichever order two writes
+land in, exactly one caller reads its own name back, so exactly one is told it
+succeeded.
+
+The name is not verified and cannot be — an issue is a file in a git repo, and
+anyone who can write the file can write any name into it. The audit trail
+already exists and is better: `issue log ISS-021` shows who committed the
+change. `--by` defaults to `$ISSUE_USER`, then `git config user.name`; with
+neither, `claim` says so and exits 1 rather than writing an owner nobody can be
+held to. `$ISSUE_USER` is what an agent sets once at the top of a run instead of
+threading a name through every call.
+
+A closed issue cannot be claimed — there is nothing to start, and a claim on one
+is almost always a typo'd id that happens to exist — but it can still be
+assigned and released, because cleaning up after the fact is real. A **blocked**
+issue *can* be claimed: claiming is saying you will do it, which is the
+reasonable thing to do about work you are waiting on.
+
+`--assignee` and `--unassigned` AND with every other filter, and with each other
+they contradict — that is exit 1 with a sentence, not an empty table, because no
+repo state can satisfy it and printing "no issues" blames the repo for the
+caller's mistake. `issue list --ready --unassigned --json` is an agent's whole
+loop: find work nothing is blocking and nobody owns, `claim` one, and the claim
+is what makes the next agent's query return something different. The ASSIGNEE
+column is conditional the way LABELS is — absent entirely when nothing in the
+result is owned — and sits before LABELS, because LABELS is the one value with
+no bound on its width and a name has a bound. Unassigned shows `-`, like a
+missing priority. In `--json`, `assignee` is there when the issue has one and
+absent when it does not, the same rule labels follow.
+
+Not in scope, deliberately: `claim` setting `in-progress` as a side effect (two
+facts written by one word, and then `release` has to guess whether to undo it),
+multiple assignees, reviewers, teams, and expiring a stale claim after N days —
+the last one is a scheduler, not a tracker.
+
+`issue set` takes any of a status, a `--priority`, an `--assignee`, a `--label`/`--unlabel`, or
 all of them — `issue set ISS-001 closed --priority low -l bug` is one write, and
 it reports only what actually moved. The status stays a bare trailing word so
 the old form keeps working; a word that is not a status is read as an id, so a
@@ -134,6 +196,9 @@ directory, the way `git` finds `.git`, so they all work from anywhere in the
 repo. `init` is deliberately local — it creates `.issues/` right where you are,
 and warns if there is already one above it. Set `ISSUES_DIR` to point the tool at
 a specific directory and skip the walk entirely.
+
+`ISSUE_USER` is the third environment knob: it is who `issue claim` acts as
+when `--by` is not given, checked before `git config user.name`.
 
 Ids are `ISS-001`, `ISS-002` and so on. Set `ISSUE_PREFIX` to use different
 letters — `ISSUE_PREFIX=BUG issue create ...` files `BUG-001.md`. Only `create`
@@ -151,6 +216,7 @@ id: ISS-001
 status: open
 created_at: 2026-09-04T14:04:43+06:00
 priority: medium
+assignee: tahmid
 labels: bug, frontend
 blocked_by: ISS-009
 ---

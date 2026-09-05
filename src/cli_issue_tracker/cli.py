@@ -5,6 +5,7 @@ from cli_issue_tracker.issues import search_issues
 from cli_issue_tracker.issues import view_issue
 from cli_issue_tracker.issues import set_fields
 from cli_issue_tracker.issues import log_issue
+from cli_issue_tracker.issues import claim_issue
 from cli_issue_tracker.init import init
 import sys
 app = typer.Typer()
@@ -40,9 +41,13 @@ def list_projects(
     label: list[str] = typer.Option([], "--label", "-l", help="Only issues with every label given"),
     ready: bool = typer.Option(False, "--ready", help="Open, with every blocker closed"),
     blocked: bool = typer.Option(False, "--blocked", help="Only issues something is in the way of"),
+    assignee: str = typer.Option(None, "--assignee", "-a", help="Only issues this person owns"),
+    unassigned: bool = typer.Option(False, "--unassigned", help="Only issues nobody has taken"),
     as_json: bool = typer.Option(False, "--json", help="Print the issues as JSON"),
 ):
-    list_issues(status or status_flag, priority, label, as_json, ready, blocked)
+    list_issues(
+        status or status_flag, priority, label, as_json, ready, blocked, assignee, unassigned
+    )
 
 
 @app.command("search")
@@ -77,8 +82,30 @@ def set_command(
     unblock: list[str] = typer.Option(
         [], "--unblock", "-B", help="Remove a blocker; repeatable"
     ),
+    assignee: str = typer.Option(None, "--assignee", "-a", help="Set the owner; empty clears it"),
 ):
-    set_fields(words, priority, label, unlabel, blocked_by, unblock)
+    set_fields(words, priority, label, unlabel, blocked_by, unblock, assignee)
+
+
+# claim, assign and release are the ownership verbs. Two of them are spellings
+# of `set --assignee` and say so by being one call; claim is the one with a
+# precondition, so it is the one with a function.
+@app.command("claim")
+def claim(
+    id: str,
+    by: str = typer.Option(None, "--by", help="Defaults to $ISSUE_USER, then git config user.name"),
+):
+    claim_issue(id, by)
+
+
+@app.command("assign")
+def assign(id: str, to: str = typer.Option(..., "--to", help="Hand it over, no questions")):
+    set_fields([id], assignee=to)
+
+
+@app.command("release")
+def release(id: str):
+    set_fields([id], assignee="")
 
 @app.command("log")
 def log(id):
