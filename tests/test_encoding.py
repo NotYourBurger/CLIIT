@@ -8,13 +8,13 @@ the fourth. This walks the source and fails on any new one.
 ast rather than grep: "encoding" appears in comments and in the fix messages,
 and a grep counts those as guarded.
 
-Run: uv run python test_encoding.py
+Run: uv run python tests/test_encoding.py
 """
 
 import ast
 import os
 
-REPO = os.path.dirname(os.path.abspath(__file__))
+from helpers import REPO
 
 
 def sources():

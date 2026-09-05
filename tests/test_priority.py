@@ -4,31 +4,15 @@ The branch worth checking is the old issues: thirteen files on disk have no
 priority field, and the rule is that missing is missing - they still list, they
 show "-", and they match no --priority filter.
 
-Run: uv run python test_priority.py
+Run: uv run python tests/test_priority.py
 """
 
-import contextlib
-import io
 import os
-import sys
 import tempfile
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src"))
-
+from helpers import run
 from cli_issue_tracker.issues import create_issue, list_issues, set_fields
 from cli_issue_tracker.storage import parse_issue, write_issue
-
-
-def run(function, *args, **kwargs):
-    """Returns (exit code or None, stdout). The exit code is the whole point of
-    the validators, so it cannot be swallowed."""
-    out = io.StringIO()
-    try:
-        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
-            function(*args, **kwargs)
-    except SystemExit as exit:
-        return exit.code, out.getvalue()
-    return None, out.getvalue()
 
 
 def demo():
@@ -52,24 +36,24 @@ def demo():
 
             # A word that is not a priority fails before anything is written -
             # otherwise a typo burns an id.
-            code, _ = run(create_issue, "Typo", "...", "urgent")
+            code, _, _ = run(create_issue, "Typo", "...", "urgent")
             assert code == 1, code
             assert not os.path.exists(os.path.join(tmp, "ISS-003.md")), "id was burned"
             assert run(list_issues, None, "urgent")[0] == 1, "bad filter must exit 1"
 
             # Both issues list; the old one shows "-" rather than a priority
             # nobody set.
-            _, table = run(list_issues)
+            _, table, _ = run(list_issues)
             assert "PRIORITY" in table, table
             assert "high" in table and "-" in table, table
 
-            _, only_high = run(list_issues, None, "high")
+            _, only_high, _ = run(list_issues, None, "high")
             assert "ISS-002" in only_high and "ISS-001" not in only_high, only_high
 
             # No issue matches, and the message says what was asked for.
-            _, empty = run(list_issues, None, "low")
+            _, empty, _ = run(list_issues, None, "low")
             assert empty.strip() == "No low issues", empty
-            _, empty = run(list_issues, "closed", "low")
+            _, empty, _ = run(list_issues, "closed", "low")
             assert empty.strip() == "No low closed issues", empty
 
             # set: the status is still a bare word, priority is a flag, and
@@ -89,20 +73,20 @@ def demo():
             run(set_fields, ["ISS-002"], "low")
             run(create_issue, "Urgent", "...", "high")
             run(set_fields, ["ISS-001", "closed"])
-            _, table = run(list_issues)
+            _, table, _ = run(list_issues)
             rows = [line.split()[0] for line in table.splitlines()[1:] if line.startswith("ISS")]
             assert rows == ["ISS-001", "ISS-002", "ISS-003"], rows
 
             # Both at once, then the same call again - the second is a no-op
             # that still reports success.
-            _, said = run(set_fields, ["ISS-002", "open"], "medium")
+            _, said, _ = run(set_fields, ["ISS-002", "open"], "medium")
             assert "has been set to open, priority medium" in said, said
-            _, said = run(set_fields, ["ISS-002", "open"], "medium")
+            _, said, _ = run(set_fields, ["ISS-002", "open"], "medium")
             assert "is already open, priority medium" in said, said
 
             # Half of it already true: the message must report what moved, not
             # what was asked for.
-            _, said = run(set_fields, ["ISS-002", "open"], "low")
+            _, said, _ = run(set_fields, ["ISS-002", "open"], "low")
             assert "has been set to priority low" in said, said
             assert "open" not in said, said
 

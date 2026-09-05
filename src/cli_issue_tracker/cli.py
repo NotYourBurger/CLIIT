@@ -1,6 +1,7 @@
 import typer
 from cli_issue_tracker.issues import create_issue
 from cli_issue_tracker.issues import list_issues
+from cli_issue_tracker.issues import search_issues
 from cli_issue_tracker.issues import view_issue
 from cli_issue_tracker.issues import set_fields
 from cli_issue_tracker.issues import log_issue
@@ -30,11 +31,29 @@ def create(
 @app.command("list")
 def list_projects(
     status: str = typer.Argument(None),
+    # Two spellings of one filter: the bare word is what the README documents
+    # and what people type, --status is what `search` has to use because its
+    # positional is the query. The two commands should not disagree about how
+    # you name a status, so both accept both.
+    status_flag: str = typer.Option(None, "--status", "-s", help="Same as the trailing word"),
     priority: str = typer.Option(None, "--priority", "-p", help="Only issues with this priority"),
     label: list[str] = typer.Option([], "--label", "-l", help="Only issues with every label given"),
+    ready: bool = typer.Option(False, "--ready", help="Open, with every blocker closed"),
+    blocked: bool = typer.Option(False, "--blocked", help="Only issues something is in the way of"),
     as_json: bool = typer.Option(False, "--json", help="Print the issues as JSON"),
 ):
-    list_issues(status, priority, label, as_json)
+    list_issues(status or status_flag, priority, label, as_json, ready, blocked)
+
+
+@app.command("search")
+def search(
+    query: str = typer.Argument(..., help="Words to find; every one of them must match"),
+    status: str = typer.Option(None, "--status", "-s", help="Only issues with this status"),
+    priority: str = typer.Option(None, "--priority", "-p", help="Only issues with this priority"),
+    label: list[str] = typer.Option([], "--label", "-l", help="Only issues with every label given"),
+    as_json: bool = typer.Option(False, "--json", help="Print the matches as JSON"),
+):
+    search_issues(query, status, priority, label, as_json)
     
 @app.command("init")
 def init_project():
@@ -52,8 +71,14 @@ def set_command(
     priority: str = typer.Option(None, "--priority", "-p", help="high, medium or low"),
     label: list[str] = typer.Option([], "--label", "-l", help="Add a label; repeatable"),
     unlabel: list[str] = typer.Option([], "--unlabel", "-L", help="Remove a label; repeatable"),
+    blocked_by: list[str] = typer.Option(
+        [], "--blocked-by", "-b", help="Cannot start until this issue closes; repeatable"
+    ),
+    unblock: list[str] = typer.Option(
+        [], "--unblock", "-B", help="Remove a blocker; repeatable"
+    ),
 ):
-    set_fields(words, priority, label, unlabel)
+    set_fields(words, priority, label, unlabel, blocked_by, unblock)
 
 @app.command("log")
 def log(id):

@@ -1,33 +1,23 @@
 """issue log against a real throwaway git repo - the branches worth checking are
 the three ways it can have nothing to print, not the formatting."""
-import contextlib
-import io
 import os
 import subprocess
-import sys
 import tempfile
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src"))
-
+from helpers import run
 from cli_issue_tracker.issues import log_issue
 from cli_issue_tracker.storage import write_issue
 
 
-def run(*args):
+def git(*args):
     subprocess.run(args, check=True, capture_output=True)
 
 
 def log(id):
-    """Returns (exit code or None, stdout, stderr). stderr matters: once the
-    repo has a commit, a missing id and a never-committed file both exit 1, so
-    the message is the only thing that says which branch ran."""
-    out, err = io.StringIO(), io.StringIO()
-    try:
-        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-            log_issue(id)
-    except SystemExit as exit:
-        return exit.code, out.getvalue(), err.getvalue()
-    return None, out.getvalue(), err.getvalue()
+    """`issue log`, captured. stderr matters: once the repo has a commit, a
+    missing id and a never-committed file both exit 1, so the message is the
+    only thing that says which branch ran."""
+    return run(log_issue, id)
 
 
 def demo():
@@ -35,9 +25,9 @@ def demo():
     with tempfile.TemporaryDirectory() as tmp:
         try:
             os.chdir(tmp)
-            run("git", "init")
-            run("git", "config", "user.email", "t@example.com")
-            run("git", "config", "user.name", "t")
+            git("git", "init")
+            git("git", "config", "user.email", "t@example.com")
+            git("git", "config", "user.name", "t")
             os.makedirs(".issues")
             os.environ["ISSUES_DIR"] = os.path.join(tmp, ".issues")
 
@@ -47,8 +37,8 @@ def demo():
             # are here to cover would never run.
             write_issue({"id": "ISS-001", "status": "open", "created_at": "x",
                          "body": "# Title\n\nbody"})
-            run("git", "add", "-A")
-            run("git", "commit", "-m", "Résumé — naïve café")
+            git("git", "add", "-A")
+            git("git", "commit", "-m", "Résumé — naïve café")
 
             code, out, _ = log("ISS-001")
             assert code is None, f"a committed issue must succeed, got exit {code}"

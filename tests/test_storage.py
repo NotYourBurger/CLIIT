@@ -5,16 +5,15 @@ gives back the same dict. A parser bug here does not raise - it returns a wrong
 dict that write_issue then persists over the file, so this is the one path in
 the codebase that can silently lose your writing.
 
-Run: uv run python test_storage.py
+Run: uv run python tests/test_storage.py
 """
 
 import os
 import shutil
 import tempfile
 
+from helpers import REPO
 from cli_issue_tracker.storage import issues_dir, parse_issue, write_issue
-
-REPO = os.path.dirname(os.path.abspath(__file__))
 
 # Everything the parser has ever got wrong, in one body: a second "# " heading
 # (title must be first-wins), a bare "---" rule (must not read as the end of the
