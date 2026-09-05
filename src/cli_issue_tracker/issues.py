@@ -66,6 +66,14 @@ def priority_of(issue):
     return issue.get("priority", "-")
 
 
+def describe(fields):
+    """`{"status": "closed", "priority": "high"}` as "closed, priority high" -
+    status reads as itself, priority needs the word to make sense."""
+    return ", ".join(
+        value if field == "status" else f"{field} {value}" for field, value in fields.items()
+    )
+
+
 def require_status(status):
     """Pass, or exit 1 saying why. Shared by list (filtering) and set (writing)
     so there is one list and one message, not two that drift apart. Same
@@ -201,10 +209,36 @@ def view_issue(id, as_json=False):
     console.print(Markdown(issue["body"]))
     
 
-def set_status(ids: list[str], status: str):
-    # Validated once for the whole batch - the status is typed by the user now,
+def set_fields(words: list[str], priority: str = None):
+    """`issue set ISS-001 closed`, `issue set ISS-001 --priority high`, or both
+    at once. The status stayed a bare word because that is what the README
+    documents and what people already type; which word it is, is decided here
+    rather than by the parser - click cannot tell a trailing optional word from
+    an id when only one word is given, and reads `issue set ISS-001` as a
+    status with no ids."""
+    ids = list(words)
+    status = ids.pop() if ids and ids[-1] in STATUSES else None
+
+    if status is None and priority is None:
+        # Also where a mistyped status lands: it is not a status, so it was
+        # read as an id, and nothing was asked for. Saying what the words are
+        # beats "Issue opne Was Not Found".
+        print(
+            f"Give a status ({', '.join(STATUSES)}) or --priority "
+            f"({', '.join(PRIORITIES)}) - e.g. issue set ISS-001 closed",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    if not ids:
+        print("No issue ids given", file=sys.stderr)
+        sys.exit(1)
+    # Validated once for the whole batch - the words are typed by the user now,
     # so a typo must not reach the file. One bad word, one error line.
-    require_status(status)
+    if priority is not None:
+        require_priority(priority)
+
+    wanted = {"status": status, "priority": priority}
+    wanted = {field: value for field, value in wanted.items() if value is not None}
 
     missing = []
     for id in ids:
@@ -215,14 +249,17 @@ def set_status(ids: list[str], status: str):
             print(f"Issue {id} Was Not Found", file=sys.stderr)
             missing.append(id)
             continue
-        if issue["status"] == status:
-            # Already there is success - the status the caller asked for is the
-            # status on disk, which is all `set` promises.
-            print(f"Issue {id} has already been {status}")
+        changed = {
+            field: value for field, value in wanted.items() if issue.get(field) != value
+        }
+        if not changed:
+            # Already there is success - what the caller asked for is what is on
+            # disk, which is all `set` promises.
+            print(f"Issue {id} is already {describe(wanted)}")
         else:
-            issue["status"] = status
+            issue.update(changed)
             write_issue(issue)
-            print(f"{id} has been {status}")
+            print(f"{id} has been set to {describe(changed)}")
 
     # Partial failure is failure: `issue set A B closed && git commit` must not
     # commit when B was never set. The good ids are still written - the batch

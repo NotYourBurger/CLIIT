@@ -15,12 +15,13 @@ uv sync
 ```bash
 issue init                          # create .issues/ in the current directory
 issue create "Title" "Description"  # write .issues/ISS-001.md
-issue create "Title" "..." --priority high   # high, medium (default) or low
+issue create "Title" "..." --priority high   # high, medium (default) or low, -p for short
 issue list                          # every issue, grouped by status
 issue list open                     # only one status: in-progress, open or closed
 issue list --priority high          # only one priority; combines with a status
 issue view ISS-001                  # render the issue as formatted Markdown
 issue set ISS-001 ISS-002 closed    # set the status of one or more issues
+issue set ISS-001 --priority high   # set the priority instead, or alongside a status
 issue log ISS-001                   # the issue's git history: who changed it, when, why
 ```
 
@@ -31,8 +32,12 @@ Priorities are `high`, `medium` and `low`, set at `create` time and stored as a
 `priority` frontmatter field. They filter and show in a column; they do not
 change the sort order, which stays status-then-id. Issues filed before the field
 existed have no priority: they show `-`, and they match no `--priority` filter
-rather than being counted as `medium`. To give one a priority, or change one,
-edit the field in the file — nothing else writes it yet.
+rather than being counted as `medium`.
+
+`issue set` takes either a status, a `--priority`, or both — `issue set ISS-001
+closed --priority low` is one write. The status stays a bare trailing word so
+the old form keeps working; a word that is not a status is read as an id, so a
+mistyped one gets told which words `set` accepts instead of being written.
 
 Every command except `init` finds `.issues/` by walking up from the current
 directory, the way `git` finds `.git`, so they all work from anywhere in the

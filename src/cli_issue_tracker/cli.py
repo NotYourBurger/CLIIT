@@ -2,7 +2,7 @@ import typer
 from cli_issue_tracker.issues import create_issue
 from cli_issue_tracker.issues import list_issues
 from cli_issue_tracker.issues import view_issue
-from cli_issue_tracker.issues import set_status
+from cli_issue_tracker.issues import set_fields
 from cli_issue_tracker.issues import log_issue
 from cli_issue_tracker.init import init
 import sys
@@ -22,14 +22,14 @@ def main():
 def create(
     title: str,
     description: str,
-    priority: str = typer.Option("medium", "--priority", help="high, medium or low"),
+    priority: str = typer.Option("medium", "--priority", "-p", help="high, medium or low"),
 ):
     create_issue(title, description, priority)
 
 @app.command("list")
 def list_projects(
     status: str = typer.Argument(None),
-    priority: str = typer.Option(None, "--priority", help="Only issues with this priority"),
+    priority: str = typer.Option(None, "--priority", "-p", help="Only issues with this priority"),
     as_json: bool = typer.Option(False, "--json", help="Print the issues as JSON"),
 ):
     list_issues(status, priority, as_json)
@@ -43,8 +43,13 @@ def view(id, as_json: bool = typer.Option(False, "--json", help="Print the issue
     view_issue(id, as_json)
 
 @app.command("set")
-def set_command(ids: list[str], status: str):
-    set_status(ids, status)
+def set_command(
+    words: list[str] = typer.Argument(
+        ..., metavar="IDS... [STATUS]", help="Issue ids, optionally followed by a status"
+    ),
+    priority: str = typer.Option(None, "--priority", "-p", help="high, medium or low"),
+):
+    set_fields(words, priority)
 
 @app.command("log")
 def log(id):

@@ -15,7 +15,7 @@ import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src"))
 
-from cli_issue_tracker.issues import create_issue, list_issues
+from cli_issue_tracker.issues import create_issue, list_issues, set_fields
 from cli_issue_tracker.storage import parse_issue, write_issue
 
 
@@ -71,6 +71,33 @@ def demo():
             assert empty.strip() == "No low issues", empty
             _, empty = run(list_issues, "closed", "low")
             assert empty.strip() == "No low closed issues", empty
+
+            # set: the status is still a bare word, priority is a flag, and
+            # either one alone is enough.
+            assert run(set_fields, ["ISS-001"], "low")[0] is None
+            assert parse_issue(os.path.join(tmp, "ISS-001.md"))["priority"] == "low"
+            assert parse_issue(os.path.join(tmp, "ISS-001.md"))["status"] == "open"
+
+            run(set_fields, ["ISS-001", "ISS-002", "closed"])
+            assert parse_issue(os.path.join(tmp, "ISS-002.md"))["status"] == "closed"
+            assert parse_issue(os.path.join(tmp, "ISS-002.md"))["priority"] == "high", (
+                "the status word must not touch the priority"
+            )
+
+            # Both at once, then the same call again - the second is a no-op
+            # that still reports success.
+            _, said = run(set_fields, ["ISS-002", "open"], "medium")
+            assert "has been set to open, priority medium" in said, said
+            _, said = run(set_fields, ["ISS-002", "open"], "medium")
+            assert "is already open, priority medium" in said, said
+
+            # Nothing asked for, and a mistyped status - which is the same
+            # branch, because a word that is not a status was read as an id.
+            assert run(set_fields, ["ISS-001"])[0] == 1
+            assert run(set_fields, ["ISS-001", "opne"])[0] == 1
+            assert run(set_fields, ["ISS-001"], "urgent")[0] == 1
+            assert run(set_fields, ["closed"])[0] == 1, "a status with no ids"
+            assert run(set_fields, ["ISS-404"], "low")[0] == 1, "missing id must exit 1"
         finally:
             os.environ.pop("ISSUES_DIR", None)
     print("ok")
