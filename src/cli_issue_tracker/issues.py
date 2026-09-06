@@ -58,6 +58,17 @@ PRIORITIES = ("high", "medium", "low")
 PRIORITY_ORDER = ("-",) + PRIORITIES[::-1]  # no priority, then low, medium, high
 
 
+# Exactly one of these per close. Three of them cost a word and a sentence;
+# `completed` is the one with a precondition, and that precondition is the
+# whole feature - without it `completed` decays back into "someone said so".
+REASONS = ("completed", "not-planned", "duplicate", "superseded")
+
+# What `set` may still write. Closing goes through `issue close`, but "closed"
+# stays in STATUSES so a trailing "closed" is still read as a status and gets
+# the sentence that names the right command, instead of being taken for an id.
+SETTABLE = tuple(status for status in STATUSES if status != "closed")
+
+
 def priority_of(issue):
     """What to show and filter on. Missing stays missing - the issues written
     before this field existed never had a priority, and calling those "medium"
@@ -109,6 +120,54 @@ def blockers_of(issue):
     other direction is derived, because one fact stored twice is two copies to
     disagree the first time someone hand-edits a file."""
     return set_field(issue, "blocked_by")
+
+
+def evidence_of(issue):
+    """The typed evidence behind a close, as a list of `{type, value}`.
+
+    Frontmatter has no list type, and the two fields that already wanted one -
+    labels, blocked_by - comma-join instead, which is why neither may contain a
+    comma. A test command may, so that trick does not stretch here and
+    pretending it does is how someone's --test string gets cut in half. The
+    line holds a JSON array instead: `partition(":")` keeps the whole rest of
+    the line, so it round trips through the existing reader and writer
+    untouched, no value is restricted, and the type survives - which is what
+    --json needs and what a second `key: value` per type would lose.
+
+    It is the one ugly line in a file we promise reads fine without the tool.
+    `issue view` rendering a real Resolution block is what pays that back.
+
+    A hand-edited line that is not JSON reads as no evidence and says so on
+    stderr, rather than taking `view` down or, worse, being written back wrong."""
+    try:
+        return json.loads(issue.get("evidence", "[]"))
+    except json.JSONDecodeError:
+        print(
+            f"{issue['id']}: evidence is not readable JSON - ignoring it",
+            file=sys.stderr,
+        )
+        return []
+
+
+def resolution_of(issue):
+    """Why this issue stopped being active, or None for one closed before any
+    of this existed. Absent stays absent - no reason is invented for old files
+    and none of them is rewritten, the same rule the issues predating `priority`
+    live by."""
+    if "reason" not in issue:
+        return None
+    return {
+        "reason": issue["reason"],
+        "closed_at": issue.get("closed_at", ""),
+        "message": issue.get("message", ""),
+        "evidence": evidence_of(issue),
+    }
+
+
+def evidence_label(kind):
+    """`pr` is the only type whose name is not a word; the rest are their own
+    label with the hyphen spelled out."""
+    return "PR" if kind == "pr" else kind.replace("-", " ").capitalize()
 
 
 def clean_set(words, kind, clean=lambda word: word):
@@ -684,6 +743,16 @@ def as_dict(issue, by_id):
         dumped["labels"] = labels_of(issue)
     dumped["blocks"] = blocks(issue["id"], by_id)
     dumped["ready"] = is_ready(issue, by_id)
+
+    # One object rather than the four flat keys the file stores, and the flat
+    # keys go with it - the raw `evidence` line is JSON in a string, which is
+    # the one shape a reader would have to parse twice. Absent when the issue
+    # was closed before any of this existed, the rule labels already follow.
+    resolution = resolution_of(issue)
+    if resolution:
+        for key in ("reason", "closed_at", "message", "evidence"):
+            dumped.pop(key, None)
+        dumped["resolution"] = resolution
     return dumped
 
 
@@ -734,6 +803,26 @@ def view_issue(id, as_json=False):
         if ids:
             console.print(f"{name + ':':<12}{said_blockers(ids, by_id)}", highlight=False)
 
+    # Between the metadata and the description, because the body is the
+    # question and this is the answer. Same dict --json prints - one resolution
+    # model, two renderings, the way `next` shares one with `list`. markup off:
+    # a message with a bracket in it is text, not rich markup.
+    resolution = resolution_of(issue)
+    if resolution:
+        console.print()
+        console.print("Resolution", style="bold cyan")
+        for name in ("reason", "closed_at", "message"):
+            label = "Closed" if name == "closed_at" else name.capitalize()
+            # Padded to a column, plus a space that is not padding: "Superseded
+            # by:" is wider than the column and would otherwise touch its value.
+            console.print(f"{label + ':':<11} {resolution[name]}", markup=False)
+        if resolution["evidence"]:
+            console.print()
+            console.print("Evidence", style="bold cyan")
+            for item in resolution["evidence"]:
+                label = evidence_label(item["type"]) + ":"
+                console.print(f"{label:<11} {item['value']}", markup=False)
+
     console.print(Markdown(issue["body"]))
     
 
@@ -762,9 +851,25 @@ def set_fields(
     --assignee replaces, like status and priority, and empty clears it - which
     is all `assign` and `release` are. `claim` is the third way in, and passes
     quiet because it prints its own line; one function writes the field so the
-    "already assigned" message and the real behaviour cannot drift."""
+    "already assigned" message and the real behaviour cannot drift.
+
+    `closed` is the one word it refuses - see `close_issue`. Nothing here
+    frees a blocked issue any more, which is why the "is now ready" cascade
+    left with the verb rather than being copied beside it."""
     ids = list(words)
     status = ids.pop() if ids and ids[-1] in STATUSES else None
+
+    # The one status `set` will not write. A second door into closing means the
+    # evidence rule is advisory, and an advisory rule is the one an agent in a
+    # hurry routes around. Before anything else, so a batch is refused whole.
+    if status == "closed":
+        print(
+            f"Closing an issue requires a resolution.\n\nUse:\n"
+            f"  issue close {ids[0] if ids else '<ID>'} --completed -m \"...\" --commit <sha>",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     add, remove = clean_labels(add), clean_labels(remove)
     if assignee is not None:
         assignee = assignee.strip()
@@ -788,9 +893,9 @@ def set_fields(
         # read as an id, and nothing was asked for. Saying what the words are
         # beats "Issue opne Was Not Found".
         print(
-            f"Give a status ({', '.join(STATUSES)}), --priority "
+            f"Give a status ({', '.join(SETTABLE)}), --priority "
             f"({', '.join(PRIORITIES)}), --assignee, --label, --unlabel, "
-            "--blocked-by or --unblock - e.g. issue set ISS-001 closed",
+            "--blocked-by or --unblock - e.g. issue set ISS-001 in-progress",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -812,7 +917,7 @@ def set_fields(
     if block:
         require_blockers(ids, block, unblock, by_id)
 
-    missing, closed = [], []
+    missing = []
     for id in ids:
         issue = by_id.get(id)
         if issue is None:
@@ -823,7 +928,7 @@ def set_fields(
             continue
 
         stuck = in_the_way(issue, by_id)
-        if stuck and status is not None and status != "closed":
+        if stuck and status is not None:
             # Blocked is not forbidden, only reported: a tracker that refuses
             # is one people stop telling the truth to, and the first time it is
             # wrong someone deletes the field rather than argue with it. stderr,
@@ -859,23 +964,176 @@ def set_fields(
             write_issue(issue)
             if not quiet:
                 print(f"{id} has been set to {describe(changed)}")
-            if changed.get("status") == "closed":
-                closed.append(id)
 
-    # Closing is the one write with consequences in other files. by_id holds
-    # the same dicts that were just written, so what it says now is what is on
-    # disk - no second scan. stdout, id first, one line each: an agent that
-    # just closed something picks up the next thing without a second command,
-    # and `awk` gets the id from where it always is.
-    for issue in by_id.values():
-        if set(closed) & set(blockers_of(issue)) and is_ready(issue, by_id):
-            print(f"{issue['id']} is now ready")
-
-    # Partial failure is failure: `issue set A B closed && git commit` must not
+    # Partial failure is failure: `issue set A B open && git commit` must not
     # commit when B was never set. The good ids are still written - the batch
     # ran to the end first.
     if missing:
         sys.exit(1)
+
+
+def require_commits(shas):
+    """Every --commit names a commit in this repository, or exit 1 before the
+    write. Local only, and skipped entirely when there is no repo - the
+    evidence is still worth recording, and network access must never be on the
+    path to closing an issue. `git cat-file -e` answers 128 for both "no repo"
+    and "no such object", so the repo test comes first; that is also how
+    log_issue treats git having nothing to say."""
+    if not shas:
+        return
+    repo = subprocess.run(
+        ["git", "rev-parse", "--git-dir"], capture_output=True, text=True, encoding="utf-8"
+    )
+    if repo.returncode:
+        return
+    for sha in shas:
+        # ^{commit} so a tree or a blob that happens to share the prefix is not
+        # accepted as the implementation.
+        found = subprocess.run(
+            ["git", "cat-file", "-e", f"{sha}^{{commit}}"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+        if found.returncode:
+            print(f"No commit {sha} in this repository", file=sys.stderr)
+            sys.exit(1)
+
+
+def close_issue(
+    id,
+    completed=False,
+    not_planned=False,
+    duplicate_of=None,
+    superseded_by=None,
+    message=None,
+    commits=(),
+    tests=(),
+    prs=(),
+    verified=(),
+):
+    """`issue close` - the same write `set` does, through a different front
+    door, because closing is the one status change that has to answer a
+    question: what was done, and where is the proof.
+
+    Exactly one reason, always a message, and `completed` needs at least one
+    piece of evidence. That last rule is the feature - without it `completed`
+    degrades back into today's `closed` inside a month and the field is
+    decoration. The other three reasons cost a word and a sentence.
+
+    Evidence is a claim, not a proof: --test records the command, it does not
+    run it, and nothing here should. A tracker that shells out because a flag
+    said so is a different and much worse tool.
+
+    Everything is validated before anything is written, the way
+    require_blockers runs before the loop: a close that fails must leave the
+    file exactly as it was."""
+    chosen = [
+        reason
+        for reason, given in zip(REASONS, (completed, not_planned, duplicate_of, superseded_by))
+        if given
+    ]
+    if len(chosen) != 1:
+        # Both the none case and the two case: either way the answer is the
+        # list, and one message beats two that say the same thing.
+        print(
+            "Give exactly one reason: --completed, --not-planned, "
+            "--duplicate-of ID or --superseded-by ID",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    reason = chosen[0]
+
+    # --duplicate-of and --superseded-by carry the reason themselves: the flag
+    # holding the value is a worse place to also have to name the reason.
+    target = duplicate_of or superseded_by
+
+    message = (message or "").strip()
+    if not message:
+        print(
+            f"Closing {id} needs --message saying what happened - not the title again",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    if "\n" in message:
+        # Frontmatter is one line per key, and a second line would read back as
+        # a key of its own. The long version belongs in the body.
+        print("A resolution message is one line - the detail goes in the issue", file=sys.stderr)
+        sys.exit(1)
+
+    # Ordered by type, and by the order the flags were given inside a type, so
+    # the same command twice writes the same line. No sorting: unlike labels
+    # these are sentences and commands, and alphabetising them helps nobody.
+    evidence = [
+        {"type": kind, "value": value.strip()}
+        for kind, values in (
+            ("commit", commits),
+            ("test", tests),
+            ("pr", prs),
+            ("verified", verified),
+            ("duplicate-of", [duplicate_of] if duplicate_of else []),
+            ("superseded-by", [superseded_by] if superseded_by else []),
+        )
+        for value in values
+    ]
+    for item in evidence:
+        if not item["value"]:
+            print(f"--{item['type']} was given nothing", file=sys.stderr)
+            sys.exit(1)
+    if completed and not evidence:
+        print(
+            f"Cannot close {id} as completed: completion requires evidence.\n"
+            "Provide --commit, --test, --pr, or --verified.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    # Every issue, not just this one: the target has to exist, and the same map
+    # answers what this close frees.
+    by_id = {issue["id"]: issue for issue in load_issues()}
+    issue = by_id.get(id)
+    if issue is None:
+        print(f"Issue {id} Was Not Found", file=sys.stderr)
+        sys.exit(1)
+    if target:
+        # The two checks --blocked-by already makes, for the same reason: a
+        # dangling pointer in the one field whose whole job is to point.
+        if target == id:
+            print(
+                f"{id} cannot {'duplicate' if duplicate_of else 'supersede'} itself",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        if target not in by_id:
+            print(f"Issue {target} Was Not Found", file=sys.stderr)
+            sys.exit(1)
+    require_commits(commits)
+
+    issue["status"] = "closed"
+    issue["reason"] = reason
+    issue["closed_at"] = now()
+    issue["message"] = message
+    if evidence:
+        issue["evidence"] = json.dumps(evidence)
+    else:
+        # Overwrite, not append: closing a reopened issue replaces the old
+        # resolution rather than growing a list. The previous one is in git and
+        # `issue log` already prints it, which is this project's answer every
+        # time it is asked to keep history in the file. Which means a
+        # not-planned close after a completed one has to take the evidence with
+        # it, or the file claims proof for a decision that has none.
+        issue.pop("evidence", None)
+    write_issue(issue)
+    print(f"{id} is closed - {reason}")
+
+    # Closing is the one write with consequences in other files, and this is
+    # now the only thing that closes. by_id holds the dict that was just
+    # written, so what it says is what is on disk - no second scan. stdout, id
+    # first, one line each: an agent that just closed something picks up the
+    # next thing without a second command.
+    for other in by_id.values():
+        if id in blockers_of(other) and is_ready(other, by_id):
+            print(f"{other['id']} is now ready")
 
 
 def claim_issue(id, by=None):

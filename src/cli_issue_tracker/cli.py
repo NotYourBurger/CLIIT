@@ -5,6 +5,7 @@ from cli_issue_tracker.issues import next_issue
 from cli_issue_tracker.issues import search_issues
 from cli_issue_tracker.issues import view_issue
 from cli_issue_tracker.issues import set_fields
+from cli_issue_tracker.issues import close_issue
 from cli_issue_tracker.issues import log_issue
 from cli_issue_tracker.issues import claim_issue
 from cli_issue_tracker.init import init
@@ -93,6 +94,29 @@ def set_command(
     assignee: str = typer.Option(None, "--assignee", "-a", help="Set the owner; empty clears it"),
 ):
     set_fields(words, priority, label, unlabel, blocked_by, unblock, assignee)
+
+
+# The one status `set` will not write: closing takes a reason and, when the
+# claim is that the work is done, evidence. Flags only here - the shapes are
+# argued in issues.close_issue.
+@app.command("close")
+def close(
+    id: str,
+    completed: bool = typer.Option(False, "--completed", help="The work was done - needs evidence"),
+    not_planned: bool = typer.Option(False, "--not-planned", help="Deliberately not doing it"),
+    duplicate_of: str = typer.Option(None, "--duplicate-of", help="Another issue already tracks it"),
+    superseded_by: str = typer.Option(None, "--superseded-by", help="Another issue replaced it"),
+    message: str = typer.Option(None, "--message", "-m", help="What happened; required"),
+    commit: list[str] = typer.Option([], "--commit", help="Evidence: a commit sha; repeatable"),
+    test: list[str] = typer.Option([], "--test", help="Evidence: how it was verified; repeatable"),
+    pr: list[str] = typer.Option([], "--pr", help="Evidence: a pull request URL; repeatable"),
+    verified: list[str] = typer.Option(
+        [], "--verified", help="Evidence: what you checked by hand; repeatable"
+    ),
+):
+    close_issue(
+        id, completed, not_planned, duplicate_of, superseded_by, message, commit, test, pr, verified
+    )
 
 
 # claim, assign and release are the ownership verbs. Two of them are spellings

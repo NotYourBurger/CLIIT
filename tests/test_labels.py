@@ -50,10 +50,10 @@ def demo():
 
             # Add, remove and a status in one write, and only what moved is
             # reported - the labels moved, the status did not.
-            run(set_fields, ["ISS-001", "closed"])
-            _, said, _ = run(set_fields, ["ISS-001", "closed"], None, ["docs"], ["bug"])
+            run(set_fields, ["ISS-001", "in-progress"])
+            _, said, _ = run(set_fields, ["ISS-001", "in-progress"], None, ["docs"], ["bug"])
             assert "has been set to labels [auth, backend, docs]" in said, said
-            assert "closed" not in said, said
+            assert "in-progress" not in said, said
             assert labels_of(read(tmp, "ISS-001")) == ["auth", "backend", "docs"]
 
             # Removing the last label takes the field with it rather than

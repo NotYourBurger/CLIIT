@@ -10,6 +10,7 @@ Run: uv run python tests/test_priority.py
 import os
 import tempfile
 
+from helpers import close
 from helpers import run
 from cli_issue_tracker.issues import create_issue, list_issues, set_fields
 from cli_issue_tracker.storage import parse_issue, write_issue
@@ -62,7 +63,7 @@ def demo():
             assert parse_issue(os.path.join(tmp, "ISS-001.md"))["priority"] == "low"
             assert parse_issue(os.path.join(tmp, "ISS-001.md"))["status"] == "open"
 
-            run(set_fields, ["ISS-001", "ISS-002", "closed"])
+            close("ISS-001", "ISS-002")
             assert parse_issue(os.path.join(tmp, "ISS-002.md"))["status"] == "closed"
             assert parse_issue(os.path.join(tmp, "ISS-002.md"))["priority"] == "high", (
                 "the status word must not touch the priority"
@@ -72,7 +73,7 @@ def demo():
             # highest priority last, nearest the prompt.
             run(set_fields, ["ISS-002"], "low")
             run(create_issue, "Urgent", "...", "high")
-            run(set_fields, ["ISS-001", "closed"])
+            close("ISS-001")
             _, table, _ = run(list_issues)
             rows = [line.split()[0] for line in table.splitlines()[1:] if line.startswith("ISS")]
             assert rows == ["ISS-001", "ISS-002", "ISS-003"], rows
@@ -95,7 +96,7 @@ def demo():
             assert run(set_fields, ["ISS-001"])[0] == 1
             assert run(set_fields, ["ISS-001", "opne"])[0] == 1
             assert run(set_fields, ["ISS-001"], "urgent")[0] == 1
-            assert run(set_fields, ["closed"])[0] == 1, "a status with no ids"
+            assert run(set_fields, ["open"])[0] == 1, "a status with no ids"
             assert run(set_fields, ["ISS-404"], "low")[0] == 1, "missing id must exit 1"
         finally:
             os.environ.pop("ISSUES_DIR", None)

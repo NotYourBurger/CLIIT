@@ -31,11 +31,16 @@ issue next --json                   # the same decision, for an agent
 issue search "verification email"   # every issue whose body or title has both words
 issue search auth --status open -p high   # the same filters list takes, ANDed with the query
 issue view ISS-001                  # render the issue as formatted Markdown
-issue set ISS-001 ISS-002 closed    # set the status of one or more issues
+issue set ISS-001 ISS-002 in-progress   # set the status of one or more issues
 issue set ISS-001 --priority high   # set the priority instead, or alongside a status
 issue set ISS-001 -l backend -L bug # add a label, remove a label, in one write
 issue set ISS-012 -b ISS-009        # ISS-012 cannot start until ISS-009 closes
 issue set ISS-012 -B ISS-009        # never mind (--blocked-by and --unblock in long form)
+issue close ISS-014 --completed -m "..." --commit 81af03c   # closing takes a reason and proof
+issue close ISS-014 --completed -m "..." --test "uv run python tests/all.py"
+issue close ISS-018 --not-planned -m "Conflicts with the deterministic search contract."
+issue close ISS-028 --duplicate-of ISS-014 -m "Same bug."
+issue close ISS-022 --superseded-by ISS-031 -m "Replaced by the architecture index."
 issue claim ISS-021                 # mine, if nobody else got there first
 issue claim ISS-021 --by codex-1    # --by defaults to $ISSUE_USER, then git config user.name
 issue assign ISS-021 --to codex-1   # hand it over, no questions
@@ -43,7 +48,8 @@ issue release ISS-021               # not mine any more
 issue log ISS-001                   # the issue's git history: who changed it, when, why
 ```
 
-Statuses are `in-progress`, `open` and `closed`. `issue list` groups them with a
+Statuses are `in-progress`, `open` and `closed` — `closed` is written by
+`issue close`, not by `issue set`. `issue list` groups them with a
 rule between groups and prints them least urgent first — closed, then open, then
 in-progress — with the highest priority last inside each group. The list reads
 bottom-up on purpose: the last line printed sits right above the prompt, which
@@ -215,6 +221,64 @@ facts written by one word, and then `release` has to guess whether to undo it),
 multiple assignees, reviewers, teams, and expiring a stale claim after N days —
 the last one is a scheduler, not a tracker.
 
+## Closing
+
+`issue close` is the only way an issue becomes closed. `issue set ISS-014 closed`
+is refused and names the command to use instead — a breaking change on purpose,
+because a second door into closing makes the evidence rule advisory, and an
+advisory rule is the one an agent in a hurry routes around. `set` keeps `open`
+and `in-progress`, so reopening stays where it is.
+
+Every close takes exactly one reason and a `--message` that is not blank and is
+one line:
+
+| Reason              | What it says                                  | Needs                          |
+| ------------------- | --------------------------------------------- | ------------------------------ |
+| `--completed`       | the described work was implemented            | at least one piece of evidence |
+| `--not-planned`     | we decided not to do it                       | the message                    |
+| `--duplicate-of ID` | another issue already tracks it               | an issue that exists           |
+| `--superseded-by ID`| another issue replaced it                     | an issue that exists           |
+
+Evidence is `--commit <sha>`, `--test "<command>"`, `--pr <url>` and
+`--verified "<what you checked>"`, each repeatable. `completed` is the one
+reason that requires some, and that requirement is the whole feature: without it
+`completed` decays back into "someone considered this finished" inside a month.
+The other three are a word and a sentence.
+
+Evidence is a claim, not a proof. `--test` records the command; it does not run
+it, and nothing here should. `--pr` is a reference the tool stores and never
+fetches — closing an issue must never need the network. `--commit` is the one
+piece that is checked, with `git cat-file` against your local repo, and the
+check is skipped rather than fatal when there is no repo.
+
+`--duplicate-of` and `--superseded-by` carry the reason themselves, and take the
+same two checks `--blocked-by` does: the id has to exist, and it cannot be the
+issue itself. A dangling pointer in the one field whose job is to point somewhere
+is the one thing worth refusing.
+
+The resolution lands in the issue file as `reason`, `closed_at`, `message` and a
+typed `evidence` list, and `issue view` prints it between the table and the
+description:
+
+```text
+Resolution
+Reason:     completed
+Closed:     2026-09-06T16:44:17+06:00
+Message:    Added cycle detection before dependency writes.
+
+Evidence
+Commit:     81af03c
+Test:       uv run python tests/all.py
+```
+
+`--json` gives the same model as one `resolution` object, so an agent never
+parses prose. Reopening with `issue set ISS-014 open` leaves the resolution
+alone — it is history, and `issue log` shows it either way. Closing again
+overwrites it rather than appending: a list of resolutions in frontmatter is an
+event log, and an event log in a Markdown file is a database with no queries.
+Issues closed before any of this existed keep working untouched — no reason is
+invented for them, the same rule the issues that predate `priority` live by.
+
 `issue set` takes any of a status, a `--priority`, an `--assignee`, a `--label`/`--unlabel`, or
 all of them — `issue set ISS-001 closed --priority low -l bug` is one write, and
 it reports only what actually moved. The status stays a bare trailing word so
@@ -257,7 +321,10 @@ Running `issue list` should print every issue in the repo as an aligned table.
 ```
 
 Everything below the frontmatter is yours — headings, tables, code fences and
-horizontal rules all survive a read/write round trip. Frontmatter fields the tool
+horizontal rules all survive a read/write round trip. A closed issue also
+carries `reason`, `closed_at`, `message` and `evidence` — the last one is a JSON
+array, because frontmatter has no list type and the comma-joining that `labels`
+and `blocked_by` use would cut a `--test` command in half at its first comma. Frontmatter fields the tool
 does not know about are kept too, so you can add your own by hand. Ids are
 allocated as one past the highest existing id with the same prefix, so deleting
 an issue never reuses a live id.
@@ -279,8 +346,8 @@ so rather than looking like nothing changed.
 
 ## Status
 
-Working: `init`, `create`, `list`, `next`, `search`, `view`, `set`, `claim`,
-`assign`, `release`, `log`.
+Working: `init`, `create`, `list`, `next`, `search`, `view`, `set`, `close`,
+`claim`, `assign`, `release`, `log`.
 
 Run every check with `uv run python tests/all.py`. They live in `tests/`, one
 file per thing that can break:
@@ -295,6 +362,7 @@ file per thing that can break:
 | `test_blockers.py`   | dependencies: one stored side, two read, and the bad edges  |
 | `test_assignee.py`   | ownership: the one write with a precondition, and the race  |
 | `test_next.py`       | the `next` ranking, every tie-breaker, and the empty case    |
+| `test_close.py`      | closing: the reasons, the evidence rule, and what it refuses |
 | `test_encoding.py`   | that nothing reads or writes text at the locale default     |
 
 No framework: each file is a script with a `demo()` that asserts and prints

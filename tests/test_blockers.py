@@ -14,6 +14,7 @@ import json
 import os
 import tempfile
 
+from helpers import close
 from helpers import run
 from cli_issue_tracker.issues import (
     blockers_of,
@@ -94,7 +95,7 @@ def demo():
             assert "    blocked by ISS-001 (open)" in table.splitlines(), table
 
             # Closing the blocker frees it, and says so on the same run.
-            _, said, _ = run(set_fields, ["ISS-001", "closed"])
+            _, said, _ = close("ISS-001")
             assert "ISS-002 is now ready" in said, said
             _, ready, _ = run(list_issues, None, None, (), False, True)
             assert ids(ready) == ["ISS-002", "ISS-003", "ISS-004"], ready
@@ -102,7 +103,7 @@ def demo():
             _, table, _ = run(list_issues)
             assert not any(line.startswith("    ") for line in table.splitlines()), table
             # Closing something nothing waited on frees nothing, quietly.
-            _, said, _ = run(set_fields, ["ISS-004", "closed"])
+            _, said, _ = close("ISS-004")
             assert "now ready" not in said, said
 
             # Direct blockers only: 3 waits on 2, someone closes 2 while 1 is
@@ -111,7 +112,7 @@ def demo():
             run(set_fields, ["ISS-001"], None, (), (), ["ISS-004"])
             run(set_fields, ["ISS-001", "open"])
             run(set_fields, ["ISS-002"], None, (), (), ["ISS-001"])
-            run(set_fields, ["ISS-002", "closed"])
+            close("ISS-002")
             _, ready, _ = run(list_issues, None, None, (), False, True)
             assert "ISS-003" in ids(ready), ready
 

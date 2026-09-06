@@ -12,6 +12,7 @@ import json
 import os
 import tempfile
 
+from helpers import close
 from helpers import run
 from cli_issue_tracker.issues import create_issue, next_issue, set_fields
 from cli_issue_tracker.storage import parse_issue, write_issue
@@ -73,7 +74,7 @@ def demo():
 
             # Unblocking by closing the blocker puts it back at the top - the
             # readiness rule is in_the_way's, not a second copy.
-            run(set_fields, ["ISS-005", "closed"])
+            close("ISS-005")
             assert picked() == "ISS-004"
 
             # Priority ranks above nothing-at-all: ISS-003 and ISS-005 are
@@ -83,17 +84,17 @@ def demo():
             del issue["priority"]
             issue["status"] = "open"
             write_issue(issue)
-            run(set_fields, ["ISS-004", "ISS-002", "closed"])
+            close("ISS-004", "ISS-002")
             assert picked() == "ISS-003"
-            run(set_fields, ["ISS-003", "closed"])
+            close("ISS-003")
             assert picked() == "ISS-001"
-            run(set_fields, ["ISS-001", "closed"])
+            close("ISS-001")
             assert picked() == "ISS-005"
 
             # Same status, same priority: the older one, then the lower id -
             # and the answer does not move between two identical calls.
             run(set_fields, ["ISS-002"], None, (), (), (), ["ISS-005"])
-            run(set_fields, ["ISS-005", "closed"])
+            close("ISS-005")
             run(set_fields, ["ISS-001", "ISS-002", "ISS-003", "open"], "medium")
             filed_at(tmp, "ISS-001", "2026-01-02T00:00:00+06:00")
             filed_at(tmp, "ISS-002", "2026-01-01T00:00:00+06:00")
@@ -116,7 +117,7 @@ def demo():
 
             # Everything closed is the empty case again, and --json keeps
             # stdout empty rather than printing a sentence into it.
-            run(set_fields, ["ISS-001", "ISS-002", "ISS-003", "closed"])
+            close("ISS-001", "ISS-002", "ISS-003")
             code, out, err = run(next_issue, as_json=True)
             assert code == 1 and out == "" and "Nothing to work on" in err, (code, out, err)
         finally:

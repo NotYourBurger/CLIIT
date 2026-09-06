@@ -27,7 +27,11 @@ change:
   fenced code, unicode). Unknown frontmatter keys are preserved on rewrite.
 - **Frontmatter has no list type.** `labels` and `blocked_by` are comma-joined
   strings, read back through `set_field()`. So no value may contain a comma —
-  that is the whole shared validation in `clean_set()`.
+  that is the whole shared validation in `clean_set()`. `evidence` is the one
+  exception and holds a JSON array: a `--test` command has commas in it, and
+  `partition(":")` keeps the whole rest of the line, so it round trips. It is
+  deliberately the only ugly line in the file; `issue view` pays it back by
+  rendering a Resolution block.
 - **Absent means absent.** Issues predating a field have no default invented for
   them: `priority_of` returns `-`, and they match no `--priority` filter. An
   emptied field is popped, not written as `labels:`.
@@ -49,6 +53,10 @@ allocation) + `init.py`.
 - `in_the_way()` is the only function that decides what "blocked" means;
   `is_ready` (= open + unblocked) and `actionable` (= not closed + unblocked,
   what `next` uses) are both built on it. Do not grow a third opinion.
+- `close_issue()` is the only thing that writes `status: closed`; `set_fields`
+  refuses the word and says so. Everything is validated before the write, and
+  the "ISS-012 is now ready" cascade lives there, because closing is now the
+  only thing that frees a blocked issue.
 - `rank` (list, least-urgent-first so the terminal reads bottom-up) and
   `next_rank` (`next`, most-urgent-first) are the same `STATUSES` / `PRIORITIES`
   tuples read in opposite directions. `next_rank` breaks every tie down to the

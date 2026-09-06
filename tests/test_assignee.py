@@ -12,6 +12,7 @@ import json
 import os
 import tempfile
 
+from helpers import close
 from helpers import run
 from cli_issue_tracker.issues import (
     claim_issue,
@@ -79,7 +80,7 @@ def demo():
 
             # A closed issue cannot be claimed, but can still be assigned and
             # released - cleaning up after the fact is real.
-            run(set_fields, ["ISS-003", "closed"])
+            close("ISS-003")
             code, _, err = run(claim_issue, "ISS-003")
             assert code == 1 and "closed" in err, (code, err)
             assert run(set_fields, ["ISS-003"], None, (), (), (), (), "tahmid")[0] is None
