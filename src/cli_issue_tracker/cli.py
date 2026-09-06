@@ -2,6 +2,7 @@ import typer
 from cli_issue_tracker.issues import create_issue
 from cli_issue_tracker.issues import list_issues
 from cli_issue_tracker.issues import next_issue
+from cli_issue_tracker.issues import brief
 from cli_issue_tracker.issues import search_issues
 from cli_issue_tracker.issues import view_issue
 from cli_issue_tracker.issues import set_fields
@@ -57,6 +58,14 @@ def next_up(
     as_json: bool = typer.Option(False, "--json", help="Print the issue as JSON"),
 ):
     next_issue(as_json)
+
+
+# The question before `next`: not "what do I do" but "what is going on here".
+@app.command("brief")
+def brief_command(
+    as_json: bool = typer.Option(False, "--json", help="Print the briefing as JSON"),
+):
+    brief(as_json)
 
 
 @app.command("search")

@@ -633,6 +633,37 @@ def list_issues(
     print_table(issues, {issue["id"]: blocked_note(issue, by_id) for issue in issues})
 
 
+def ranked_actionable(issues, by_id):
+    """Everything that could be started right now, most urgent first.
+
+    The one decision `next` makes, and `brief` shows the head of it plus the
+    tail - two renderings of one ordering, the arrangement `view` and `--json`
+    already have. A second `sorted(..., key=something_similar)` in `brief` is
+    how the two commands start naming different issues, which is the day the
+    brief becomes worse than the five calls it replaced.
+
+    Sorted rather than min: next_rank breaks every tie down to the id, so the
+    head is the answer and not the first of several equally good ones, and the
+    rest is already the order `brief` wants."""
+    return sorted((issue for issue in issues if actionable(issue, by_id)), key=next_rank)
+
+
+def next_lines(issue, by_id):
+    """The four lines `next` prints, so `brief` prints the same four.
+
+    Not a table: the backlog is what the caller was trying not to read. The
+    Ready line is the JSON's `ready` rendered, not a second opinion. It reads
+    "in progress" for a started issue because `ready` means what `list --ready`
+    means everywhere else, and printing "no" on the issue the tool just told
+    you to work on would read as a bug."""
+    return [
+        f"{issue['id']}  {issue['title']}",
+        f"Status:   {issue['status']}",
+        f"Priority: {priority_of(issue)}",
+        f"Ready:    {'yes' if is_ready(issue, by_id) else 'in progress'}",
+    ]
+
+
 def next_issue(as_json=False):
     """The one issue to work on now, and nothing else - `issue list --ready`
     hands back a table and leaves the last step to the caller, which for an
@@ -643,7 +674,7 @@ def next_issue(as_json=False):
     the question should not answer it, and that is also what makes it cheap to
     ask twice."""
     issues, by_id = select_issues()
-    candidates = [issue for issue in issues if actionable(issue, by_id)]
+    candidates = ranked_actionable(issues, by_id)
 
     if not candidates:
         # Nothing on stdout in either mode, and exit 1: a parser gets a clean
@@ -656,9 +687,7 @@ def next_issue(as_json=False):
         )
         sys.exit(1)
 
-    # min, not sort: one pass, and next_rank breaks every tie, so this is the
-    # answer rather than the first of several equally good ones.
-    issue = min(candidates, key=next_rank)
+    issue = candidates[0]
 
     if as_json:
         # The same as_dict `list --json` prints, one object rather than an
@@ -667,16 +696,199 @@ def next_issue(as_json=False):
         print(json.dumps(as_dict(issue, by_id), indent=2))
         return
 
-    # Four lines, not a table: the backlog is what the caller was trying not
-    # to read. The Ready line is the JSON's `ready` rendered, not a second
-    # opinion - so the two renderings of one decision cannot disagree. It
-    # reads "in progress" for a started issue because `ready` means what
-    # `list --ready` means everywhere else, and printing "no" on the issue the
-    # tool just told you to work on would read as a bug.
-    print(f"{issue['id']}  {issue['title']}")
-    print(f"Status:   {issue['status']}")
-    print(f"Priority: {priority_of(issue)}")
-    print(f"Ready:    {'yes' if is_ready(issue, by_id) else 'in progress'}")
+    print("\n".join(next_lines(issue, by_id)))
+
+
+# Every section but IN PROGRESS is capped at this. Work already started is the
+# thing you most want to not start again, and a repo with fifteen in-progress
+# issues has a problem the brief should show rather than hide behind "+10 more".
+BRIEF_CAP = 5
+
+# Under the id and its two spaces, so a note lines up with the title above it -
+# the same shape `list` indents its blocked line to.
+INDENT = " " * 9
+
+
+def omitted(count):
+    """`+2 more`, or nothing. A cap that does not say what it hid is the one
+    that makes you run `issue list` anyway."""
+    return [f"+{count} more"] if count else []
+
+
+def brief_rows(issues, by_id):
+    """`ISS-041  Add resolution metadata   high`, with the blocked line under
+    the ones that have one - `blocked_note` again, because a blocked row that
+    reads like a ready one is the exact thing that note exists to fix.
+
+    Padded to the widest title in this section, not in the brief: the sections
+    are read one at a time, and a common width would make a three-row section
+    as wide as the longest title anywhere in the repo."""
+    width = max(len(issue["title"]) for issue in issues)
+    lines = []
+    for issue in issues:
+        lines.append(f"{issue['id']}  {issue['title']:<{width}}  {priority_of(issue)}")
+        lines += [f"{INDENT}{note}" for note in blocked_note(issue, by_id)]
+    return lines
+
+
+def closed_key(issue):
+    """Newest close first, read with reverse=True.
+
+    `closed_at` is the honest field and every issue closed before it existed
+    has none; `updated_at` stands in for those rather than being backfilled
+    into them, because an approximate date that looks exactly like a recorded
+    one is the quiet lie this file format exists to make impossible. The id
+    keeps the order total, so two calls in a row cannot disagree."""
+    return (issue.get("closed_at") or issue.get("updated_at", ""), issue["id"])
+
+
+def resolved_lines(issue):
+    """Two lines: what it was, and why it stopped. The message is the whole
+    point of the section - it is where a session finds out that the thing it
+    was about to build was closed as not-planned last week - and the target of
+    a duplicate or supersede close is the other half of that sentence.
+
+    Evidence is deliberately not here: `issue view` renders it, and the brief
+    points at where to look rather than loading it."""
+    lines = [f"{issue['id']}  {issue['title']}"]
+    resolution = resolution_of(issue)
+    if resolution is None:
+        # Closed before any of this existed. "closed" is all the file says, so
+        # it is all this says - nothing is invented for it.
+        return lines + [f"{INDENT}closed"]
+    said = resolution["reason"]
+    pointed = [
+        item["value"]
+        for item in resolution["evidence"]
+        if item["type"] in ("duplicate-of", "superseded-by")
+    ]
+    if pointed:
+        said += f" -> {pointed[0]}"
+    if resolution["message"]:
+        said += f" - {resolution['message']}"
+    return lines + [f"{INDENT}{said}"]
+
+
+def brief(as_json=False):
+    """The project in one command: what is happening, what is stuck, what
+    changed. `next` is a lookup and exits 1 when it finds nothing; this is a
+    report, so an empty backlog is a finding and the exit code stays 0.
+
+    One `select_issues()` call and one `by_id` - the loads are the cost here.
+    Everything above the render is the model both renderings read, so the human
+    output and --json cannot drift, and every value in it comes from the
+    function that already decides it: `ranked_actionable` for the order,
+    `is_ready` for ready, `in_the_way` for blocked, `resolution_of` for a
+    close. Nothing here re-derives one. The day `brief` and `next` name
+    different issues, the brief is worse than the five commands it replaced,
+    because it is confidently wrong instead of merely verbose."""
+    issues, by_id = select_issues()
+
+    candidates = ranked_actionable(issues, by_id)
+    chosen = candidates[0] if candidates else None
+    # The same list `next` picked from, head dropped, narrowed to what
+    # `list --ready` would show: an in-progress issue is actionable and is
+    # already printed above, and printing it twice is the padding this command
+    # exists to avoid.
+    ready = [issue for issue in candidates if is_ready(issue, by_id) and issue is not chosen]
+
+    # Id order in these two rather than by rank: both are short, every row
+    # carries its own priority, and `rank` and `next_rank` are sort keys for
+    # statuses we wrote - a report must not raise on a hand-typed one.
+    in_progress = sorted(
+        (issue for issue in issues if issue["status"] == "in-progress"),
+        key=lambda issue: issue["id"],
+    )
+    # Not closed, the same test `actionable` makes: a closed issue is not
+    # stuck, whatever its blocked_by still says.
+    blocked = sorted(
+        (issue for issue in issues if issue["status"] != "closed" and in_the_way(issue, by_id)),
+        key=lambda issue: issue["id"],
+    )
+    closed = sorted(
+        (issue for issue in issues if issue["status"] == "closed"), key=closed_key, reverse=True
+    )
+
+    # The hole in the graph, said out loud for the first time. `in_the_way`
+    # already refuses to let a missing id block anything, which is the right
+    # behaviour and also the reason nothing has ever mentioned it.
+    warnings = [
+        {"id": issue["id"], "missing_blockers": missing}
+        for issue in sorted(issues, key=lambda issue: issue["id"])
+        if (missing := [id for id in blockers_of(issue) if id not in by_id])
+    ]
+
+    briefing = {
+        "summary": {
+            "open": sum(1 for issue in issues if issue["status"] == "open"),
+            "in_progress": len(in_progress),
+            "ready": sum(1 for issue in issues if is_ready(issue, by_id)),
+            "blocked": len(blocked),
+            "closed": len(closed),
+        },
+        "next": as_dict(chosen, by_id) if chosen else None,
+        "in_progress": [as_dict(issue, by_id) for issue in in_progress],
+        "ready": [as_dict(issue, by_id) for issue in ready[:BRIEF_CAP]],
+        "ready_omitted": max(len(ready) - BRIEF_CAP, 0),
+        "blocked": [as_dict(issue, by_id) for issue in blocked],
+        "recently_resolved": [as_dict(issue, by_id) for issue in closed[:BRIEF_CAP]],
+        "resolved_omitted": max(len(closed) - BRIEF_CAP, 0),
+        "warnings": warnings,
+    }
+
+    if as_json:
+        # Every key, always, empty rather than absent - a parser branching on
+        # whether a key exists learns worse than nothing. The issues are the
+        # same as_dict `list --json` prints; a shape invented for this command
+        # would be a second thing to keep in step with the file format.
+        print(json.dumps(briefing, indent=2))
+        return
+
+    if not issues:
+        print('No issues yet.\n\nCreate one with:\n  issue create "Title" "Description"')
+        return
+
+    # Ordered by what the reader does with it, not by what is cheapest to
+    # compute. The summary is first because it is the only part that says how
+    # big the project is, which is what tells you whether to trust the
+    # truncated sections under it.
+    sections = [
+        (
+            "PROJECT",
+            [
+                "   ".join(
+                    f"{name.replace('_', ' ').capitalize()}: {count}"
+                    for name, count in briefing["summary"].items()
+                )
+            ],
+        ),
+        ("NEXT", next_lines(chosen, by_id) if chosen else []),
+        ("IN PROGRESS", brief_rows(in_progress, by_id) if in_progress else []),
+        (
+            "READY",
+            brief_rows(ready[:BRIEF_CAP], by_id) + omitted(briefing["ready_omitted"])
+            if ready
+            else [],
+        ),
+        ("BLOCKED", brief_rows(blocked, by_id) if blocked else []),
+        (
+            "RECENTLY RESOLVED",
+            [line for issue in closed[:BRIEF_CAP] for line in resolved_lines(issue)]
+            + omitted(briefing["resolved_omitted"]),
+        ),
+        (
+            "WARNINGS",
+            [
+                f"{warning['id']} references missing blocker "
+                f"{', '.join(warning['missing_blockers'])}"
+                for warning in warnings
+            ],
+        ),
+    ]
+    # Empty sections are dropped rather than printed bare: a blank BLOCKED
+    # header teaches a reader nothing, and this is the one command where a
+    # section can cost lines and say nothing at all.
+    print("\n\n".join(f"{name}\n" + "\n".join(lines) for name, lines in sections if lines))
 
 
 def search_issues(query, status=None, priority=None, labels=(), as_json=False):

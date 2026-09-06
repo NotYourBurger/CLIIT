@@ -26,6 +26,8 @@ issue list --blocked                # stuck, and what on
 issue list --assignee tahmid        # what tahmid is on (-a for short)
 issue list --unassigned             # what nobody has taken
 issue list --ready --unassigned --json    # what an agent may safely start
+issue brief                         # what is happening in this project
+issue brief --json                  # the same orientation, for an agent
 issue next                          # the one issue to work on now
 issue next --json                   # the same decision, for an agent
 issue search "verification email"   # every issue whose body or title has both words
@@ -150,6 +152,68 @@ nothing.
 It is read-only. It does not claim the issue, does not set `in-progress` and
 writes no file — asking what to do next should not decide it for you, and that
 is also what makes it safe to ask twice. `issue claim` is one call away.
+
+`issue brief` answers the question before that one: *what is going on here at
+all*. It used to cost five calls — `list`, `list --ready`, `list --blocked`,
+`list in-progress`, then a read of whatever closed recently — and a person
+skimmed them while an agent paid for four tables it mostly discarded. The brief
+is one load of `.issues/` and seven sections, in the order you use them:
+
+```
+PROJECT
+Open: 8   In progress: 1   Ready: 7   Blocked: 1   Closed: 0
+
+NEXT
+ISS-001  Issue 1
+Status:   in-progress
+Priority: medium
+Ready:    in progress
+
+IN PROGRESS
+ISS-001  Issue 1  medium
+
+READY
+ISS-002  Issue 2  high
+ISS-004  Issue 4  medium
+         blocked by ISS-042 (missing)
++2 more
+
+BLOCKED
+ISS-003  Issue 3  medium
+         blocked by ISS-009 (open)
+
+RECENTLY RESOLVED
+ISS-020  Evidence-based closing
+         completed - issue close ships: four reasons, required message.
+
+WARNINGS
+ISS-004 references missing blocker ISS-042
+```
+
+Every number in there comes from the function that already decides it —
+`next` is the head of the same ranked list `issue next` picks from, `ready` is
+that list minus it, `in_the_way` says what is blocked, `resolution_of` reads a
+close. Nothing is re-derived: the day `brief` and `next` name different issues,
+the brief is worse than the five commands it replaced, because it is
+confidently wrong instead of merely verbose.
+
+Everything but `IN PROGRESS` is capped — one next issue, five ready, five
+resolved, `+N more` for the rest. Work already started is uncapped on purpose:
+it is the thing you most want to not start again, and fifteen in-progress
+issues is a problem the brief should show rather than hide. `RECENTLY RESOLVED`
+is what makes this project memory rather than a dashboard — it is where you
+find out that the thing you were about to build was closed as `not-planned` last
+week. It sorts on `closed_at`, falling back to `updated_at` for issues closed
+before that field existed; nothing is backfilled, because an approximate date
+that looks exactly like a recorded one is the lie this file format exists to
+prevent. `WARNINGS` is blockers pointing at ids with no file: they never block
+anything, and this is the first thing that says the graph has a hole in it.
+
+Empty sections are omitted in the human output and present-but-empty in
+`--json` — a blank `BLOCKED` header teaches a reader nothing, and a parser
+branching on whether a key exists learns worse than nothing. It always exits 0,
+including on an empty project: `next` is a lookup and a lookup that finds
+nothing failed, but `brief` is a report and an empty backlog is a finding.
 
 Blocked issues get a `blocked by ISS-009 (open)` line indented under the row —
 the same mechanism `search` uses for a match line, so there is no new column, and
