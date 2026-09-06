@@ -1,6 +1,7 @@
 import typer
 from cli_issue_tracker.issues import create_issue
 from cli_issue_tracker.issues import list_issues
+from cli_issue_tracker.issues import next_issue
 from cli_issue_tracker.issues import search_issues
 from cli_issue_tracker.issues import view_issue
 from cli_issue_tracker.issues import set_fields
@@ -48,6 +49,13 @@ def list_projects(
     list_issues(
         status or status_flag, priority, label, as_json, ready, blocked, assignee, unassigned
     )
+
+
+@app.command("next")
+def next_up(
+    as_json: bool = typer.Option(False, "--json", help="Print the issue as JSON"),
+):
+    next_issue(as_json)
 
 
 @app.command("search")

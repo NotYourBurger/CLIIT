@@ -26,6 +26,8 @@ issue list --blocked                # stuck, and what on
 issue list --assignee tahmid        # what tahmid is on (-a for short)
 issue list --unassigned             # what nobody has taken
 issue list --ready --unassigned --json    # what an agent may safely start
+issue next                          # the one issue to work on now
+issue next --json                   # the same decision, for an agent
 issue search "verification email"   # every issue whose body or title has both words
 issue search auth --status open -p high   # the same filters list takes, ANDed with the query
 issue view ISS-001                  # render the issue as formatted Markdown
@@ -114,6 +116,34 @@ still open, B is done because a person said so, and B's blockers stopped being
 A's problem then. A **missing** blocker never blocks either — it can never be
 closed, so counting it would strand the issue forever; it prints as
 `ISS-042 (missing)` instead, which is louder and points at the repair.
+
+`issue next` goes one step further and picks. `--ready` hands back a table and
+leaves the last row to you, which is fine for eyes and expensive for an agent —
+list, read the statuses, read the priorities, chase the blockers, decide, every
+time, before any work starts. `issue next` is that decision in one call, and
+`issue next --json` is the whole of an agent's "what do I do now".
+
+It returns one issue, ranked: `in-progress` before `open`, then priority high
+to low with no priority last, then the oldest `created_at`, then the id. The
+tail of that list is the point — two issues filed in the same second with the
+same priority must come out in the same order every time, or asking twice gets
+you two different answers and neither gets finished. The status and priority
+orders are the same two tuples `list` reads backwards, so there is one place
+saying what urgent means.
+
+Closed and blocked issues are never returned, by the same `in_the_way` rule
+`--ready` uses — `--ready` is that rule plus "open", `next` is that rule plus
+"not closed", and neither has its own idea of what blocks work. The human
+output is four lines rather than a table, because the backlog is what you were
+trying not to read; the `Ready:` line is the JSON's `ready` field rendered, so
+it says `in progress` for a started issue rather than contradicting it. With
+nothing to work on it prints nothing on stdout and exits 1, `search`'s
+contract: a lookup that found nothing failed, unlike a filter that matched
+nothing.
+
+It is read-only. It does not claim the issue, does not set `in-progress` and
+writes no file — asking what to do next should not decide it for you, and that
+is also what makes it safe to ask twice. `issue claim` is one call away.
 
 Blocked issues get a `blocked by ISS-009 (open)` line indented under the row —
 the same mechanism `search` uses for a match line, so there is no new column, and
@@ -249,7 +279,8 @@ so rather than looking like nothing changed.
 
 ## Status
 
-Working: `init`, `create`, `list`, `search`, `view`, `set`, `log`.
+Working: `init`, `create`, `list`, `next`, `search`, `view`, `set`, `claim`,
+`assign`, `release`, `log`.
 
 Run every check with `uv run python tests/all.py`. They live in `tests/`, one
 file per thing that can break:
@@ -262,6 +293,8 @@ file per thing that can break:
 | `test_labels.py`     | labels, the first field that merges instead of replacing    |
 | `test_search.py`     | matching, the filters that AND with it, and the exit code   |
 | `test_blockers.py`   | dependencies: one stored side, two read, and the bad edges  |
+| `test_assignee.py`   | ownership: the one write with a precondition, and the race  |
+| `test_next.py`       | the `next` ranking, every tie-breaker, and the empty case    |
 | `test_encoding.py`   | that nothing reads or writes text at the locale default     |
 
 No framework: each file is a script with a `demo()` that asserts and prints

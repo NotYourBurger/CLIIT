@@ -182,6 +182,24 @@ def is_ready(issue, by_id):
     return issue["status"] == "open" and not in_the_way(issue, by_id)
 
 
+def actionable(issue, by_id):
+    """Something you could start right now: a status we know, not closed, and
+    nothing in the way.
+
+    `is_ready` is this plus "open", which is right for the filter it was
+    written for and wrong here - a ready in-progress issue is the first thing
+    `next` should return. Both are `in_the_way` plus a status test, and
+    `in_the_way` stays the only thing that decides what blocks work: two
+    functions with their own idea of blocked is how a tracker starts
+    recommending work it also refuses to list.
+
+    A status nobody wrote - a hand-typed word in a file - is not actionable
+    rather than a crash in next_rank, which has no position to sort it into.
+    `next` recommends the statuses it knows about."""
+    status = issue["status"]
+    return status in STATUSES and status != "closed" and not in_the_way(issue, by_id)
+
+
 def blocks(id, by_id):
     """The other side of the edge, derived by reading the others - which `list`
     and `search` already do on every run."""
@@ -269,6 +287,32 @@ def rank(issue):
     return (
         STATUS_ORDER.index(status) if status in STATUS_ORDER else -1,
         PRIORITY_ORDER.index(priority) if priority in PRIORITY_ORDER else -1,
+    )
+
+
+def next_rank(issue):
+    """Sort key for `next`: most urgent first, the other end of `rank`.
+
+    Status first, because unfinished work you already started is work you are
+    about to abandon, and abandoning it is what this ordering exists to
+    prevent. Then priority, then the oldest, then the id.
+
+    That tail is not decoration. Two issues filed in the same second with the
+    same priority have to come out in the same order on every call, or an agent
+    asking twice is told to do two different things and finishes neither. It is
+    also why the id is in here rather than left to the order the directory
+    happened to list.
+
+    Both orders are STATUSES and PRIORITIES read forwards, which is the pair
+    `rank` reads backwards - there is still one place saying what urgent means.
+    An unset priority sorts last here and first there, which is the same end of
+    the same list."""
+    priority = priority_of(issue)
+    return (
+        STATUSES.index(issue["status"]),
+        PRIORITIES.index(priority) if priority in PRIORITIES else len(PRIORITIES),
+        issue["created_at"],
+        issue["id"],
     )
 
 
@@ -528,6 +572,52 @@ def list_issues(
         return
 
     print_table(issues, {issue["id"]: blocked_note(issue, by_id) for issue in issues})
+
+
+def next_issue(as_json=False):
+    """The one issue to work on now, and nothing else - `issue list --ready`
+    hands back a table and leaves the last step to the caller, which for an
+    agent is a backlog scan and a paragraph of reasoning to re-derive a
+    decision that was already deterministic.
+
+    Read-only on purpose: it does not claim, assign or set in-progress. Asking
+    the question should not answer it, and that is also what makes it cheap to
+    ask twice."""
+    issues, by_id = select_issues()
+    candidates = [issue for issue in issues if actionable(issue, by_id)]
+
+    if not candidates:
+        # Nothing on stdout in either mode, and exit 1: a parser gets a clean
+        # EOF instead of a prose apology, and a script gets the branch it
+        # wants. Same contract `search` has - a lookup that found nothing
+        # failed, unlike a filter that matched nothing.
+        print(
+            "Nothing to work on - every issue is closed or blocked",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    # min, not sort: one pass, and next_rank breaks every tie, so this is the
+    # answer rather than the first of several equally good ones.
+    issue = min(candidates, key=next_rank)
+
+    if as_json:
+        # The same as_dict `list --json` prints, one object rather than an
+        # array of one - the caller asked for the next issue, not for a list
+        # that happens to be short.
+        print(json.dumps(as_dict(issue, by_id), indent=2))
+        return
+
+    # Four lines, not a table: the backlog is what the caller was trying not
+    # to read. The Ready line is the JSON's `ready` rendered, not a second
+    # opinion - so the two renderings of one decision cannot disagree. It
+    # reads "in progress" for a started issue because `ready` means what
+    # `list --ready` means everywhere else, and printing "no" on the issue the
+    # tool just told you to work on would read as a bug.
+    print(f"{issue['id']}  {issue['title']}")
+    print(f"Status:   {issue['status']}")
+    print(f"Priority: {priority_of(issue)}")
+    print(f"Ready:    {'yes' if is_ready(issue, by_id) else 'in progress'}")
 
 
 def search_issues(query, status=None, priority=None, labels=(), as_json=False):
