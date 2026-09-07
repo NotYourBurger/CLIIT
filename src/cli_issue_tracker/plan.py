@@ -193,6 +193,26 @@ def read_plan(id: str):
     return plan
 
 
+def untouched(plan) -> bool:
+    """Is this plan still only what `seed` wrote?
+
+    The one question worth asking about a plan nobody kept, and it is asked of
+    the content rather than of git - so it survives a fresh clone, which has no
+    mtime, and a squashed history, which has no count. ISS-031 counted commits
+    and its own Discoveries recorded why that cannot answer: a plan edited all
+    the way through the work and committed once at the end reads identically to
+    one seeded and abandoned, so the sensor measured the committer.
+
+    `goal` is excluded because `seed` fills it in from the issue title - it is
+    written by the tool, not by anybody who came back. Everything else `seed`
+    leaves empty, so anything at all in any of them is somebody having been
+    here. A missing key counts as empty: `read_plan` treats an absent section
+    as absent, and a plan with no sections at all is the seeded case."""
+    return not plan.get("checkpoints") and not any(
+        plan.get(key) for key, _, _ in SECTIONS if key != "goal"
+    )
+
+
 def git(*args, cwd=None):
     """One read-only git call: its stdout, or None if it did not work.
 

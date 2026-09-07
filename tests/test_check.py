@@ -11,11 +11,13 @@ Run: uv run python tests/test_check.py
 
 import json
 import os
+import re
 import subprocess
 import tempfile
 
 from helpers import REPO, run
 from cli_issue_tracker.check import check
+from cli_issue_tracker.plan import seed
 
 # A key written twice parses to the last value and rewrites as one line, so
 # the first is gone and nothing ever said so. The whole reason for check 1.
@@ -71,6 +73,18 @@ SEEDED = """# ISS-901 Work Plan
 # the whole thing ISS-031 exists to count.
 KEPT = SEEDED.replace("- [ ] b", "- [x] b")
 
+# The seed exactly as `start` writes it, from `seed` itself rather than a copy
+# of it here: the fixture must go stale the day the skeleton changes, because
+# "is this still only the seed" is a question about that function's output.
+ONLY_SEEDED = seed("ISS-902", "Waiting on nothing")
+
+# A plan with no checkpoints at all and one line of prose. The case that says
+# `untouched` is not a synonym for `0/0 ticked`: somebody came back, wrote down
+# where they were, and never broke the work into boxes.
+PROSE_ONLY = ONLY_SEEDED.replace(
+    "## Current\n", "## Current\n\nHalfway through the parser.\n"
+)
+
 
 def git(*args, cwd):
     """A git call that never raises. Returns None when there is no git at all,
@@ -86,6 +100,16 @@ def git(*args, cwd):
     except OSError:
         return None
     return done.stdout if done.returncode == 0 else None
+
+
+def cells(out, id):
+    """One row of `--plans`, split back into its columns.
+
+    Two spaces is the separator; every column is padded to its widest value, so
+    a fixture added three rows down moves the spaces in every other row. Match
+    a literal line and the assertion breaks on a change it is not about."""
+    line = next(line for line in out.splitlines() if line.startswith(id + " "))
+    return re.split(r" {2,}", line)
 
 
 def write(name, text, where=None):
@@ -175,6 +199,24 @@ if __name__ == "__main__":
             # findings pass would have thrown away.
             assert "ISS-904" in out and "0/0 ticked" in out, out
 
+            # 8b. The signal ISS-032 replaced the commit count with, and it
+            #     needs no git either. A plan that is still only what `start`
+            #     wrote is the handover failure; one with a box ticked is not.
+            write("ISS-902.md", ONLY_SEEDED, where=work)
+            _, out, _ = run(check, plans=True)
+            assert cells(out, "ISS-902") == ["ISS-902", "untouched", "0/0 ticked"], out
+            assert cells(out, "ISS-901")[1] == "touched", out
+            # A file with nothing in it a reader recognises is the seeded case
+            # too: absent sections are absent, not touched.
+            assert cells(out, "ISS-904")[1] == "untouched", out
+
+            # Prose and no checkpoints is somebody having been here. Ticking is
+            # the common way a plan gets kept, not the only one, and a signal
+            # that missed this would report a working plan as abandoned.
+            write("ISS-902.md", PROSE_ONLY, where=work)
+            _, out, _ = run(check, plans=True)
+            assert cells(out, "ISS-902") == ["ISS-902", "touched", "0/0 ticked"], out
+
             # 9. The number the whole issue is about. With a repo, a plan
             #    committed once and never touched again is the handover
             #    failure with a count on it. Without git, none of this is
@@ -184,16 +226,26 @@ if __name__ == "__main__":
                 assert git("commit", "-qm", "seeded", cwd=tmp) is not None
 
                 _, out, _ = run(check, plans=True)
-                assert "ISS-901  1 commit " in out, out
-                assert "last touched 0 commits ago" in out, out
+                assert cells(out, "ISS-901")[1:] == [
+                    "touched", "1 commit", "last touched 0 commits ago", "1/3 ticked",
+                ], out
+
+                # The two columns saying opposite things about the same file,
+                # which is the whole of ISS-032: ISS-902 was edited after it
+                # was seeded and then committed once, so its commit count is
+                # indistinguishable from an abandoned plan and `untouched` is
+                # not. This workflow commits at the end; that is the normal
+                # case, not the odd one.
+                assert cells(out, "ISS-902")[1:3] == ["touched", "1 commit"], out
 
                 # A commit that is not this plan is what staleness counts.
                 write("ISS-905.md", "# ISS-905 Work Plan", where=work)
                 git("add", "-A", cwd=tmp)
                 git("commit", "-qm", "another", cwd=tmp)
                 _, out, _ = run(check, plans=True)
-                assert "ISS-901  1 commit " in out, out
-                assert "last touched 1 commits ago" in out, out
+                assert cells(out, "ISS-901")[2:4] == [
+                    "1 commit", "last touched 1 commits ago",
+                ], out
 
                 # And a plan that is actually being kept: two commits, and the
                 # staleness clock back at zero.
@@ -201,8 +253,9 @@ if __name__ == "__main__":
                 git("add", "-A", cwd=tmp)
                 git("commit", "-qm", "ticked one", cwd=tmp)
                 _, out, err = run(check, plans=True)
-                assert "ISS-901  2 commits " in out, out
-                assert "2/3 ticked" in out, out
+                assert cells(out, "ISS-901")[1:] == [
+                    "touched", "2 commits", "last touched 0 commits ago", "2/3 ticked",
+                ], out
 
                 # --json is the same report, typed, for whoever counts the
                 # five. stdout stays parseable - the only thing on stderr is
@@ -213,11 +266,15 @@ if __name__ == "__main__":
                 rows = {row["id"]: row for row in json.loads(out)}
                 assert rows["ISS-901"] == {
                     "id": "ISS-901",
+                    "untouched": False,
                     "commits": 2,
                     "commits_since": 0,
                     "ticked": 2,
                     "checkpoints": 3,
                 }, rows["ISS-901"]
+                # The row the threshold is counted from, typed rather than
+                # scraped out of a column.
+                assert rows["ISS-905"]["untouched"] is True, rows["ISS-905"]
 
             # 7. The twenty-six real files, which are the ones that matter.
             #    test_storage reads one issue off disk; this reads every one,

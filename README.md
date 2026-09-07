@@ -562,30 +562,39 @@ A different question about a different directory, so it takes the whole verb:
 not what is wrong with the files, but whether the work plans are being kept.
 
 ```text
-ISS-026  1 commit   last touched 9 commits ago  8/8 ticked
-ISS-029  2 commits  last touched 0 commits ago  5/5 ticked
-ISS-031  0 commits  not committed               6/7 ticked
+ISS-026  touched    1 commit   last touched 9 commits ago  8/8 ticked
+ISS-029  touched    2 commits  last touched 0 commits ago  5/5 ticked
+ISS-031  untouched  0 commits  not committed               0/0 ticked
 ```
 
-A plan is a file in a git repo, so git already holds the answer. The commit
-count is `git log --follow` on the plan; staleness is how many commits have
-landed since it last changed; the ticked count comes from the same reader
-`issue view` uses. It is a report and not a check — always exit 0, on stdout,
-`--json` for whoever is counting.
+The first column is the answer. A plan is **untouched** when it is still
+exactly what `issue start` seeded — no checkpoints, and nothing in `Decisions`,
+`Discoveries`, `Current` or `Next`. `Goal` does not count towards it, because
+the CLI writes that one from the issue title. Anything else at all means
+somebody came back to the file, which is the behaviour the feature rests on.
+The ticked count comes from the same reader `issue view` uses.
+
+The two git columns are context: the commit count is `git log --follow` on the
+plan, and staleness is how many commits have landed since it last changed. A
+plan that is touched but last committed nineteen commits ago is still worth a
+look. It is a report and not a check — always exit 0, on stdout, `--json` for
+whoever is counting.
 
 This exists because ISS-026 shipped the work plan on an argument and put the
 risk on the record in the same breath: nothing enforces it, and a seeded plan
 that is never ticked is worse than no plan, because the next agent believes it.
 The handover died of exactly that and it took twenty-five issues to notice —
-because nobody was counting. ISS-031 wrote the threshold down before the
-numbers were known: after five issues worked through `issue start`, if fewer
-than three of five plans show more than one commit, the work plan goes the way
-of the handover and `docs/PRD/05-Work-Plan.md` records why.
+because nobody was counting. The threshold is written down in
+`docs/PRD/05-Work-Plan.md`: after five issues worked through `issue start`, if
+fewer than three of five plans report as touched, the work plan goes the way of
+the handover.
 
-One thing to read the column with: it counts **commits, not edits**. A plan
-edited all the way through the work and committed once at the end reads as
-`1 commit`, the same as one that was seeded and abandoned. So the number is
-only worth the threshold if the plan is committed as it is ticked.
+ISS-031 pointed that threshold at the commit count and ISS-032 moved it, for a
+reason worth knowing before reading those two columns: they count **commits,
+not edits**. A plan edited all the way through the work and committed once at
+the end reads as `1 commit`, exactly like one seeded and abandoned — and that
+is the normal case here, not the odd one. Reading the content instead also
+survives a fresh clone, which has no mtimes, and a squash, which has no count.
 
 ## File format
 

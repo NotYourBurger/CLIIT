@@ -55,7 +55,10 @@ holds none of the filtering, blocking or ordering opinions `issues.py` exists
 for, so `cli.py` calls it directly the way it already calls `init`. `--plans`
 takes the whole verb rather than adding findings: it is a report on how much
 the work plans are kept, exit 0 either way, and the threshold it feeds is
-written down in ISS-031),
+written down in `docs/PRD/05-Work-Plan.md`. Its verdict column is
+`plan.untouched` — content, not git — because ISS-031's commit count measured
+whoever commits rather than whoever writes, and this workflow commits the plan
+edits at the end),
 `convert_id.py` (id allocation) and `init.py`, which imports `plan.rule_text`
 to write the workflow rule into `CLAUDE.md` / `AGENTS.md`.
 
@@ -90,7 +93,9 @@ knowing:
 
 `plan.py` holds the second artifact: `.issues/work/ISS-NNN.md`, a live record
 of where an issue's work stands, seeded by `issue start` and edited by whatever
-is doing the work. It has no verbs of its own — `start`, `next`, `view` and
+is doing the work. `untouched()` is the one judgement it makes about one: still
+exactly what `seed` wrote, asked of the content so it survives a fresh clone
+and a squash. It has no verbs of its own — `start`, `next`, `view` and
 `close` are all issue verbs that happen to read it, which is why they stayed in
 `issues.py`. It replaced `handover.py` (ISS-024, deleted in ISS-026); the
 handover was written at the end of a session, and sessions end at usage limits

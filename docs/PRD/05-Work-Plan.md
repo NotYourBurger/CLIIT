@@ -572,6 +572,50 @@ recorded as its own issue, not a retraction of theirs.
 
 ---
 
+# The Threshold
+
+Written down before the result is known, because the previous answer to "is
+this artifact alive?" was a habit, and a habit is what produced zero handovers
+across twenty-five issues.
+
+**After the next five issues worked through `issue start`: if fewer than three
+of those five plans report as `touched`, the work plan is deleted the way the
+handover was, and this document records why.**
+
+`issue check --plans` is the instrument. A plan is `untouched` when it is still
+exactly what `start` seeded — no checkpoints, and nothing written in
+`Decisions`, `Discoveries`, `Current` or `Next`. `Goal` does not count, because
+the CLI writes it from the issue title. Anything else at all is somebody having
+come back to the file, which is the behaviour the whole feature rests on.
+
+```text
+ISS-026  touched    1 commit   last touched 11 commits ago  8/8 ticked
+ISS-032  untouched  0 commits  not committed                0/0 ticked
+```
+
+Baseline the day this was written: six plans on disk, all six `touched`, 5/5 to
+9/9 ticked.
+
+## Why the commit count was retired
+
+ISS-031 wrote this threshold first and pointed it at `git log --follow` on the
+plan: a plan with exactly one commit was seeded and never touched again. Its
+own Discoveries then recorded why that cannot answer the question. The count
+measures the committer, not the writer. This workflow commits the plan edits
+together at the end of the work, so all six kept plans read `1 commit` or
+`2 commits` while every one of them was in fact edited a dozen times — and a
+kill switch wired to that sensor would have deleted a feature that works.
+
+The replacement reads content instead of history, which also means it survives
+the two things history does not: a fresh clone has no mtimes, and a squashed
+branch has no per-file commit count.
+
+The two Git columns stay. They are not wrong, they are insufficient — a plan
+that is `touched` but last committed nineteen commits ago is still worth
+looking at. They are context now rather than verdict.
+
+---
+
 # Success Criteria
 
 The feature succeeds when a cut-off session costs one checkpoint instead of one

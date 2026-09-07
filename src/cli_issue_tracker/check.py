@@ -10,13 +10,20 @@ and its worst failure does not raise: a parser bug returns a plausible dict,
 `write_issue` persists it over the prose, and the first person to notice is
 reading a mangled issue weeks later. Nothing else here can lose writing.
 
-`--plans` is the other half, and it is a report rather than a check: how many
-commits each work plan has, how stale it is, how much of it is ticked. ISS-031
-wrote the threshold down before the numbers were known - if fewer than three of
-the next five plans show more than one commit, the work plan goes the way of
-the handover. That is a judgement taken once by a person, so nothing here fails
-on it. The tool's job is to make the count cost one command instead of nobody
-ever taking it, which is exactly how the handover survived twenty-five issues
+`--plans` is the other half, and it is a report rather than a check: whether
+each work plan was ever touched after it was seeded, how much of it is ticked,
+and - as context now rather than verdict - how many commits it has and how
+stale they are. ISS-031 wrote a threshold down before the numbers were known
+and pointed it at the commit count; ISS-032 replaced the sensor, because that
+count measures the committer. This workflow commits the plan edits at the end,
+so every plan on disk read `1 commit` while every one of them had in fact been
+edited repeatedly, and a kill switch wired to that would have deleted a feature
+that works. The threshold now reads the same rows against `untouched`, and it
+lives in docs/PRD/05-Work-Plan.md.
+
+That threshold is a judgement taken once by a person, so nothing here fails on
+it. The tool's job is to make the count cost one command instead of nobody ever
+taking it, which is exactly how the handover survived twenty-five issues
 without anyone noticing it was dead.
 """
 
@@ -30,6 +37,7 @@ from cli_issue_tracker.fields import blockers_of
 from cli_issue_tracker.plan import WORK
 from cli_issue_tracker.plan import git
 from cli_issue_tracker.plan import read_plan
+from cli_issue_tracker.plan import untouched
 from cli_issue_tracker.plan import work_dir
 from cli_issue_tracker.storage import FIELD_ORDER
 from cli_issue_tracker.storage import join_file
@@ -91,10 +99,14 @@ def plan_rows():
         # read_plan never raises and treats a missing section as absent, so a
         # file nobody has put a `## Plan` in counts as zero of zero rather
         # than dropping out of the report.
-        points = (read_plan(id) or {"checkpoints": []})["checkpoints"]
+        plan = read_plan(id) or {}
+        points = plan.get("checkpoints", [])
         rows.append(
             {
                 "id": id,
+                # First, because it is the verdict the threshold is read
+                # against; the two git numbers below it are context.
+                "untouched": untouched(plan),
                 "commits": commits,
                 "commits_since": since,
                 "ticked": sum(1 for point in points if point["done"]),
@@ -108,17 +120,19 @@ def plan_cells(row):
     """One row as the cells a human reads. The two git columns are dropped
     rather than filled with a placeholder when git could not answer - a git
     failure costs the block and not the command, the call `git_context`
-    already makes."""
+    already makes. `untouched` is never dropped: it is the verdict, it needs no
+    git, and it is the column that stays true in a fresh clone."""
+    state = "untouched" if row["untouched"] else "touched"
     ticked = f"{row['ticked']}/{row['checkpoints']} ticked"
     if row["commits"] is None:
-        return [row["id"], ticked]
+        return [row["id"], state, ticked]
     commits = f"{row['commits']} commit{'s' * (row['commits'] != 1)}"
     # A plan with no commit yet is not stale, it is unwritten, and "0 commits
     # ago" would read as the opposite of what it means.
     since = "not committed" if row["commits_since"] is None else (
         f"last touched {row['commits_since']} commits ago"
     )
-    return [row["id"], commits, since, ticked]
+    return [row["id"], state, commits, since, ticked]
 
 
 def check_plans(as_json=False):
