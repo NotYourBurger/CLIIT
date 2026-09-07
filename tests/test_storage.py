@@ -67,11 +67,15 @@ if __name__ == "__main__":
         os.environ["ISSUES_DIR"] = issues
         try:
 
-            def write_raw(name, text):
+            def write_raw(name, text, newline="\n"):
                 path = os.path.join(issues, name)
-                with open(path, "w", encoding="utf-8") as file:
+                with open(path, "w", encoding="utf-8", newline=newline) as file:
                     file.write(text)
                 return path
+
+            def raw_bytes(path):
+                with open(path, "rb") as file:
+                    return file.read()
 
             # 1. A real issue file off disk survives a rewrite, and a second
             #    rewrite changes nothing more (idempotent, not just stable once).
@@ -140,7 +144,35 @@ if __name__ == "__main__":
                 "---",
             ], head
 
-            # 5. issues_dir walks up, so every command works from a
+            # 5. Line endings are part of the format, so they are part of the
+            #    round trip. A file hand-edited on Windows arrives as CRLF and
+            #    must still parse - reads keep their translation for exactly
+            #    that - but what goes back is LF, because `join_file` writes
+            #    "\n" and the tool must not be the one thing in the repo
+            #    disagreeing with every editor about it.
+            crlf = write_raw(
+                "ISS-904.md",
+                "---\r\nid: ISS-904\r\nstatus: open\r\ncreated_at: x\r\n---\r\n\r\n"
+                "# Typed in Notepad\r\n\r\nTwo lines,\r\nboth of them CRLF.\r\n",
+                newline="",
+            )
+            assert b"\r\n" in raw_bytes(crlf), "the fixture is not actually CRLF"
+            hand_edited = parse_issue(crlf)
+            assert hand_edited is not None, "a hand-edited CRLF file no longer parses"
+            assert hand_edited["title"] == "Typed in Notepad", hand_edited
+            assert hand_edited["body"] == "# Typed in Notepad\n\nTwo lines,\nboth of them CRLF.", (
+                "CR survived into the body"
+            )
+            after = raw_bytes(write_issue(hand_edited))
+            assert b"\r" not in after, "a rewrite kept CRLF"
+            assert stable(parse_issue(crlf)) == stable(hand_edited), "the CRLF round trip changed it"
+
+            # And every write goes out the same way, including one whose text
+            # never had a CR in it - that is the write text mode used to
+            # translate behind us.
+            assert b"\r" not in raw_bytes(write_issue(nasty)), "write_issue emitted CRLF"
+
+            # 6. issues_dir walks up, so every command works from a
             #    subdirectory, and $ISSUES_DIR wins over the walk - which is
             #    what every check above relies on.
             del os.environ["ISSUES_DIR"]

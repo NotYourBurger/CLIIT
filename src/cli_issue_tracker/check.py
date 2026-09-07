@@ -54,8 +54,15 @@ def round_trip(path):
     is exactly what a rewrite would do rather than a model of it. A file with
     no frontmatter is not ours and can never be a finding - it comes back
     unchanged - because `parse_issue` already skips those, which is what keeps
-    a stray note in the directory out of `issue list`."""
-    with open(path, "r", encoding="utf-8") as file:
+    a stray note in the directory out of `issue list`.
+
+    newline="" because "compare bytes" was not true before ISS-033: text mode
+    collapses "\\r\\n" to "\\n" on the way in, and `join_file` emits "\\n", so a
+    CRLF file matched its own rewrite while every line of it was about to
+    change. The one module whose docstring says nothing else here can lose
+    writing could not see the only line-ending bug this repo has actually
+    had."""
+    with open(path, "r", encoding="utf-8", newline="") as file:
         raw = file.read()
     split = split_file(path)
     if split is None:
@@ -168,7 +175,9 @@ def check(as_json=False, plans=False):
         if not name.endswith(".md"):
             continue
         file_path = os.path.join(path, name)
-        with open(file_path, "r", encoding="utf-8") as file:
+        # newline="" on both sides of the comparison or neither: this read is
+        # the half `round_trip` is measured against.
+        with open(file_path, "r", encoding="utf-8", newline="") as file:
             raw = file.read()
         if round_trip(file_path) != raw:
             findings.append(

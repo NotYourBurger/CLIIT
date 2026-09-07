@@ -145,8 +145,14 @@ def write_issue(issue: dict) -> str:
     fields = {key: value for key, value in issue.items() if key not in ("title", "body")}
     content = join_file(fields, issue["body"], first=FIELD_ORDER)
 
+    # newline="\n" for the same reason encoding="utf-8" is here: text mode
+    # takes a platform default, and on this one "\n" leaves as "\r\n". The file
+    # format is the API and its bytes are part of it - a tool writing CRLF
+    # beside an agent's editor writing LF is a diff on every line of a file
+    # nobody touched, and `join_file` already committed to "\n". Reads stay
+    # translated on purpose, so a hand-edited CRLF file still parses.
     file_path = os.path.join(path, f"{issue['id']}.md")
-    with open(file_path, "w", encoding="utf-8") as md_file:
+    with open(file_path, "w", encoding="utf-8", newline="\n") as md_file:
         md_file.write(content)
     return file_path
 

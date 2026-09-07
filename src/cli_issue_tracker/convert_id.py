@@ -24,7 +24,7 @@ if __name__ == "__main__":
     import tempfile
 
     def touch(d, name):
-        open(os.path.join(d, name), "w", encoding="utf-8").close()
+        open(os.path.join(d, name), "w", encoding="utf-8", newline="\n").close()
 
     with tempfile.TemporaryDirectory() as d:
         assert next_id(d) == "ISS-001", "empty dir starts at 001"

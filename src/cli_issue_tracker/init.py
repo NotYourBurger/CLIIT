@@ -40,7 +40,7 @@ def write_rule():
             text = file.read()
         if first in text:
             continue
-        with open(path, "a", encoding="utf-8") as file:
+        with open(path, "a", encoding="utf-8", newline="\n") as file:
             file.write(f"\n{HEADING}\n\n{rule_text()}\n")
         print(f"Workflow rule added to {name}")
 

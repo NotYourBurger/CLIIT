@@ -126,7 +126,7 @@ Keep this current as you work:
 def write_plan(id: str, title: str, blockers=()) -> str:
     """Seed one plan. The only write in this module, and it happens once."""
     path = os.path.join(work_dir(create=True), f"{id}.md")
-    with open(path, "w", encoding="utf-8") as md_file:
+    with open(path, "w", encoding="utf-8", newline="\n") as md_file:
         md_file.write(seed(id, title, blockers))
     return path
 

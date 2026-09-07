@@ -625,6 +625,13 @@ does not know about are kept too, so you can add your own by hand. Ids are
 allocated as one past the highest existing id with the same prefix, so deleting
 an issue never reuses a live id.
 
+Every file the tool writes goes out UTF-8 with LF line endings, on every
+platform, and `.gitattributes` pins `.issues/**/*.md` to `eol=lf` so a checkout
+does not put CRLF back. Reads still accept CRLF, so a file hand-edited in
+Notepad parses — it just comes back LF. This matters more than it sounds: the
+plan is a file an agent edits with its own tool, and an edit whose search text
+has the wrong line endings matches nothing and silently does not land.
+
 Work plans are one directory down, in `.issues/work/ISS-NNN.md`, and are the
 one artifact here with no frontmatter at all — the issue already carries the
 id and the metadata, and the plan is its execution state rather than a second
@@ -674,7 +681,7 @@ file per thing that can break:
 | `test_close.py`      | closing: the reasons, the evidence rule, and what it refuses |
 | `test_plan.py`       | seeding, resuming, the blocked refusal, and a mangled plan  |
 | `test_check.py`      | `issue check`, against files the tool did not write, and the real `.issues/` |
-| `test_encoding.py`   | that nothing reads or writes text at the locale default     |
+| `test_encoding.py`   | that nothing reads or writes text at the platform default   |
 
 No framework: each file is a script with a `demo()` that asserts and prints
 `ok`, so `uv run python tests/test_search.py` runs one on its own and the
@@ -685,8 +692,10 @@ not stop the others; the exit code counts them. `tests/helpers.py` holds the
 two things they all wanted: `run()`, which calls a command and hands back its
 exit code, stdout and stderr, and `REPO`.
 
-`test_encoding.py` exists because the same mistake landed three times: this machine
-defaults to cp1252, so anything reading or writing text without being told
-UTF-8 mangles accents quietly and still exits 0. It parses the source and fails
-on any `open()` or `subprocess` call that takes the locale default, rather than
-waiting for a fourth bug report.
+`test_encoding.py` exists because the same mistake landed four times: this machine
+defaults to cp1252 and to CRLF, so anything reading or writing text without
+being told mangles accents or line endings quietly and still exits 0. It parses
+the source and fails on any `open()` or `subprocess` call that takes the
+platform default — `encoding=` on every text call, and `newline=` on every
+write-mode `open()` — rather than waiting for a fifth bug report. Reads are
+deliberately left translated, which is what lets a hand-edited CRLF file parse.

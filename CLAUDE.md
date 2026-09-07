@@ -143,10 +143,15 @@ written. The rules that are not obvious from the code:
   contract. A batch `set` with one bad id still writes the good ones, then exits 1.
 - **Validate before writing.** Bad status/priority/blocker exits before anything
   touches disk; a rejected `create` must not burn an id.
-- **UTF-8 everywhere, explicitly.** This machine defaults to cp1252 and the same
-  bug landed three times. Every `open()` and `subprocess.run(text=True)` must pass
-  `encoding="utf-8"`; `tests/test_encoding.py` walks the source with `ast` and
-  fails on any new one.
+- **UTF-8 and LF everywhere, explicitly.** This machine defaults to cp1252 and to
+  CRLF, and the same shape of bug landed four times. Every `open()` and
+  `subprocess.run(text=True)` must pass `encoding="utf-8"`, and every write-mode
+  `open()` must also pass `newline="\n"` — reads stay translated on purpose, so a
+  hand-edited CRLF file still parses, and the two reads that compare bytes
+  (`check.py`) ask for `newline=""` by name. `tests/test_encoding.py` walks the
+  source with `ast` and fails on any new one. `.gitattributes` pins
+  `.issues/**/*.md` to `eol=lf`, because `core.autocrlf` would otherwise put the
+  CRLF straight back on the next checkout (ISS-033).
 - **Comments explain why, not what.** The existing prose across `issues.py`,
   `storage.py` and the four layers records rejected alternatives, and each
   module's docstring is the paragraph that covers the whole file. Match that

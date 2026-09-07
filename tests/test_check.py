@@ -114,7 +114,7 @@ def cells(out, id):
 
 def write(name, text, where=None):
     path = os.path.join(where, name)
-    with open(path, "w", encoding="utf-8") as file:
+    with open(path, "w", encoding="utf-8", newline="\n") as file:
         file.write(text)
     return path
 

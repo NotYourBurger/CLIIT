@@ -38,7 +38,7 @@ def edit(tmp, id, **fields):
     if "updated_at" in fields:
         with open(path, "r", encoding="utf-8") as file:
             text = file.read()
-        with open(path, "w", encoding="utf-8") as file:
+        with open(path, "w", encoding="utf-8", newline="\n") as file:
             file.write(
                 re.sub(r"^updated_at: .*$", f"updated_at: {fields['updated_at']}", text, count=1,
                        flags=re.M)

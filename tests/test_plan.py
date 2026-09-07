@@ -84,9 +84,14 @@ def read(path):
         return file.read()
 
 
-def write(path, text):
-    with open(path, "w", encoding="utf-8") as file:
+def write(path, text, newline="\n"):
+    with open(path, "w", encoding="utf-8", newline=newline) as file:
         file.write(text)
+
+
+def raw_bytes(path):
+    with open(path, "rb") as file:
+        return file.read()
 
 
 def rule_reaches_the_agent():
@@ -146,6 +151,27 @@ def demo():
             # whole feature rests on, and CLAUDE.md is the first thing a long
             # session compacts away. It has to be in the file being edited.
             assert "end of the session" in seeded, seeded
+
+            # The seed goes out LF on a machine whose text mode would have made
+            # it CRLF. The plan is the one file the CLI hands straight to an
+            # agent to edit with its own tool, so a CRLF seed is a whole-file
+            # diff on the first edit - and worse, an edit that matches on
+            # nothing and silently does not land.
+            assert b"\r" not in raw_bytes(path), "the seeded plan is CRLF"
+
+            # The other direction: a plan hand-edited on Windows arrives CRLF
+            # and every section still reads back, with no CR left in the prose.
+            # ISS-031's own plan records what this costs - "the edit that was
+            # supposed to fill it in had silently failed on CRLF line endings."
+            write(path, UNDER_WAY.replace("\n", "\r\n"), newline="")
+            assert b"\r\n" in raw_bytes(path), "the fixture is not actually CRLF"
+            crlf = read_plan("ISS-001")
+            assert crlf["checkpoints"] == [
+                {"text": "Read the auth code", "done": True},
+                {"text": "Wire the provider", "done": False},
+            ], crlf
+            assert crlf["current"] == "Connecting login to AuthProvider.", crlf
+            assert crlf["decisions"][0] == "Auth state lives in AuthProvider", crlf
 
             # Resuming: the same command, on work that already has a plan. The
             # file an agent has been editing is never reseeded - it is the only

@@ -1,0 +1,11 @@
+# The database is .issues/*.md and the file format is the API, so the bytes are
+# part of it. ISS-033 made every write LF; core.autocrlf is `true` on the
+# machine this repo is developed on, which was converting them straight back on
+# checkout - the CRLF was never in the index, git was putting it in the working
+# tree. Without this line the normalise pass that closed ISS-033 is undone by
+# the next `git checkout` and `issue check` starts failing again on thirty-five
+# files nobody touched.
+#
+# Scoped to what the tool writes. The .py sources have the same working-tree
+# churn and no bug attached to it, so they keep whatever the clone decides.
+.issues/**/*.md text eol=lf
