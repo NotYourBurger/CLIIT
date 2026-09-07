@@ -6,6 +6,7 @@ import tempfile
 
 from helpers import run
 from cli_issue_tracker.issues import log_issue
+from cli_issue_tracker.storage import read_issue
 from cli_issue_tracker.storage import write_issue
 
 
@@ -45,6 +46,20 @@ def demo():
             # Non-ASCII survives the subprocess decode - git writes UTF-8 and
             # the locale default here does not.
             assert "Résumé — naïve café" in out, out
+
+            # Oldest first, which is not git's default: a long history would
+            # otherwise scroll the newest commit off the top and leave the
+            # initial filing sitting at the prompt.
+            issue = read_issue("ISS-001")
+            issue["priority"] = "high"
+            write_issue(issue)
+            git("git", "add", "-A")
+            git("git", "commit", "-m", "ISS-001: set priority")
+
+            code, out, _ = log("ISS-001")
+            lines = out.splitlines()
+            assert len(lines) == 2, out
+            assert "Résumé" in lines[0] and "set priority" in lines[1], out
 
             # Both of these reach git with a path it has no history for, which
             # now returns 0 and an empty log rather than failing.

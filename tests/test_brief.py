@@ -111,17 +111,26 @@ def demo():
                 "open": 8, "in_progress": 1, "ready": 7, "blocked": 1, "closed": 0
             }, data["summary"]
 
-            # Five of seven, the highest first, and the count of what it hid.
+            # Five of seven, the highest last - the row nearest the prompt is
+            # the one to start first, the arrangement `rank` gives `list`. The
+            # "+2 more" opens the block instead of closing it: it summarises
+            # the tail that was cut, and under the top row it would read as if
+            # it were hiding something more urgent.
             # The next issue is not in there: it is already two sections up.
             # ISS-004 is: a missing blocker never blocks, and the note under
             # the row is the only thing that says the id was ever written.
             rows = [row.split()[0] for row in found["READY"] if row.startswith("ISS-")]
-            assert rows == ["ISS-002", "ISS-004", "ISS-005", "ISS-006", "ISS-007"], found["READY"]
-            assert found["READY"][2].strip() == "blocked by ISS-042 (missing)", found["READY"]
-            assert found["READY"][-1] == "+2 more", found["READY"]
+            assert rows == ["ISS-007", "ISS-006", "ISS-005", "ISS-004", "ISS-002"], found["READY"]
+            assert found["READY"][5].strip() == "blocked by ISS-042 (missing)", found["READY"]
+            assert found["READY"][0] == "+2 more", found["READY"]
             assert data["ready_omitted"] == 2, data["ready_omitted"]
-            assert [issue["id"] for issue in data["ready"]] == rows, data["ready"]
             assert not any(row.startswith("ISS-001") for row in found["READY"]), found["READY"]
+
+            # The reversal is in the printing, after the cap. --json is still
+            # most-urgent-first, and it is the same five ids: a parser has no
+            # cursor, and moving this into `ranked_actionable` or `closed_key`
+            # would quietly change which issue `next` picks.
+            assert [issue["id"] for issue in data["ready"]] == rows[::-1], data["ready"]
 
             # A missing blocker never blocks - ISS-004 is ready above - but it
             # is a hole in the graph and this is the first thing that says so.
@@ -154,16 +163,22 @@ def demo():
                 "RECENTLY RESOLVED", "READY", "IN PROGRESS", "NEXT", "PROJECT"
             ], list(found)
 
+            # --json newest first, printed oldest first: the newest close is
+            # the one line the reader came for, so it ends up at the prompt.
             resolved = [issue["id"] for issue in data["recently_resolved"]]
             assert resolved == ["ISS-004", "ISS-009", "ISS-008", "ISS-007", "ISS-006"], resolved
+            printed = [
+                row.split()[0] for row in found["RECENTLY RESOLVED"] if row.startswith("ISS-")
+            ]
+            assert printed == resolved[::-1], found["RECENTLY RESOLVED"]
             assert data["resolved_omitted"] == 1, data["resolved_omitted"]
-            assert found["RECENTLY RESOLVED"][-1] == "+1 more", found["RECENTLY RESOLVED"]
+            assert found["RECENTLY RESOLVED"][0] == "+1 more", found["RECENTLY RESOLVED"]
             assert "resolution" not in data["recently_resolved"][0], data["recently_resolved"][0]
-            assert found["RECENTLY RESOLVED"][:2] == [
+            assert found["RECENTLY RESOLVED"][-2:] == [
                 "ISS-004  Issue 4",
                 "         closed",
             ], found["RECENTLY RESOLVED"]
-            assert found["RECENTLY RESOLVED"][3].strip() == "completed - done", found
+            assert found["RECENTLY RESOLVED"][2].strip() == "completed - done", found
 
             # Read-only, after all of that.
             before = {name: parse_issue(os.path.join(tmp, name)) for name in os.listdir(tmp)}

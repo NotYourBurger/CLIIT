@@ -144,7 +144,11 @@ INDENT = " " * 9
 
 def omitted(count):
     """`+2 more`, or nothing. A cap that does not say what it hid is the one
-    that makes you run `issue list` anyway."""
+    that makes you run `issue list` anyway.
+
+    Printed at the top of its block, directly under the header: the rows below
+    it end with the one you came for, and a tail-summary sitting under the most
+    urgent row would read as if it were hiding something newer."""
     return [f"+{count} more"] if count else []
 
 
@@ -226,16 +230,12 @@ def handover_lines(handover):
 
     NEXT is last because it is the line the next session acts on, and the
     terminal leaves the last line printed right above the prompt - the same
-    reason `list` sorts least-urgent-first."""
+    reason `list` sorts least-urgent-first. GIT and FILES go above the sections
+    for that same reason: they are the state the checkpoint describes, so they
+    read as context, and printed after NEXT they left the cursor on a list of
+    file paths instead of the one instruction."""
     date = handover["created_at"].replace("T", " ")[:16]
     lines = [f"Handover {handover['id']}", f"{' '.join(handover['issues'])} - {date}"]
-    for key, heading, is_list in SECTIONS:
-        value = handover.get(key)
-        if not value:
-            continue
-        lines.append("")
-        lines.append(heading.upper())
-        lines += [f"- {item}" for item in value] if is_list else value.splitlines()
 
     git = handover.get("git")
     if git:
@@ -245,6 +245,14 @@ def handover_lines(handover):
         )
     if handover.get("files"):
         lines += ["", "FILES"] + list(handover["files"])
+
+    for key, heading, is_list in SECTIONS:
+        value = handover.get(key)
+        if not value:
+            continue
+        lines.append("")
+        lines.append(heading.upper())
+        lines += [f"- {item}" for item in value] if is_list else value.splitlines()
     return lines
 
 

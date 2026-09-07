@@ -50,7 +50,7 @@ issue release ISS-021               # not mine any more
 issue log ISS-001                   # the issue's git history: who changed it, when, why
 issue handover create ISS-042 --summary "..." --next "..."   # where the work stands now
 issue handover latest ISS-042       # the newest checkpoint, for the next session
-issue handover list ISS-042         # every checkpoint, newest first
+issue handover list ISS-042         # every checkpoint, oldest first
 issue handover view H-006           # one checkpoint by its own id
 ```
 
@@ -169,6 +169,9 @@ WARNINGS
 ISS-004 references missing blocker ISS-042
 
 RECENTLY RESOLVED
++1 more
+ISS-019  issue next - the one issue to work on now
+         completed - next ships: ranked, deterministic, read-only.
 ISS-020  Evidence-based closing
          completed - issue close ships: four reasons, required message.
 
@@ -177,10 +180,10 @@ ISS-003  Issue 3  medium
          blocked by ISS-009 (open)
 
 READY
-ISS-002  Issue 2  high
++2 more
 ISS-004  Issue 4  medium
          blocked by ISS-042 (missing)
-+2 more
+ISS-002  Issue 2  high
 
 IN PROGRESS
 ISS-001  Issue 1  medium
@@ -198,9 +201,17 @@ Open: 8   In progress: 1   Ready: 7   Blocked: 1   Closed: 0
 The reversal is the same convention `list` already holds to: a terminal leaves
 you at the bottom, so the thing you came for has to be the part already on
 screen. Printed in reading order, `PROJECT` and `NEXT` are the first two things
-to scroll away on any repo with a few closed issues. Order *inside* a section
-is untouched — a header still opens its own block — and `--json` keeps its
-logical order, because nothing scrolls in a parser.
+to scroll away on any repo with a few closed issues.
+
+It goes all the way down: **a header opens its block, and the items inside it
+end with the one you came for.** `READY` ends on the most urgent row, so the
+one to start first is the one under the cursor and `list` and `brief` agree
+about which end of a list is urgent; `RECENTLY RESOLVED` ends on the newest
+close. `+N more` summarises the tail that was cut, so it sits directly under
+the header — below the top row it would read as if it were hiding something
+more urgent. The reversal happens in the printing, after the cap, never in the
+sort keys: `next` takes the head of the same ranked list, and `--json` keeps
+its logical order because nothing scrolls in a parser.
 
 Every number in there comes from the function that already decides it —
 `next` is the head of the same ranked list `issue next` picks from, `ready` is
@@ -430,6 +441,14 @@ $ issue handover latest ISS-042
 Handover H-006
 ISS-042 - 2026-09-07 03:18
 
+GIT
+feature/dependency-validation @ 81af03c
+Working tree has uncommitted changes.
+
+FILES
+src/issues.py
+tests/test_blockers.py
+
 SUMMARY
 Cycle detection is implemented; CLI error handling remains.
 
@@ -444,22 +463,18 @@ src/issues.py:set_issue
 
 NEXT
 Update the cycle error rendering, then run tests/test_blockers.py
-
-GIT
-feature/dependency-validation @ 81af03c
-Working tree has uncommitted changes.
-
-FILES
-src/issues.py
-tests/test_blockers.py
 ```
 
 An empty section is not printed at all. `latest` and `view` take `--json`, and
 there every optional list is present and empty rather than missing, so an agent
 never has to branch on a key; `git` is `null` outside a repo, because "we could
-not read it" is not "the tree was clean". `list` is the same handovers newest
-first, one line each. All three exit 1 when there is nothing to find, the same
-contract `issue next` and `issue view` keep.
+not read it" is not "the tree was clean". `list` is the same handovers oldest
+first, one line each, so the newest checkpoint — the one a resuming session
+usually wants — is the line left at the prompt; `--json` stays newest first.
+`GIT` and `FILES` are printed above the sections for the same reason: they are
+the state the checkpoint describes, and `NEXT` is the one line the next session
+acts on, so it has to be the last one printed. All three exit 1 when there is
+nothing to find, the same contract `issue next` and `issue view` keep.
 
 `issue view` shows a three-line pointer when an issue has one — the id, the
 first line of the summary, the next action — and nothing at all when it does
@@ -522,9 +537,11 @@ numbered `H-001` against that directory alone — see [Handover](#handover).
 | `init.py`       | creating `.issues/` here, and only here                |
 | `tests/`        | one script per thing that can break, plus the runner   |
 
-`issue log` is `git log --follow` pointed at the issue file — the history comes
-free from issues being files. Uncommitted edits are invisible to git, so it says
-so rather than looking like nothing changed.
+`issue log` is `git log --follow --reverse` pointed at the issue file — the
+history comes free from issues being files. `--reverse` because git's default
+puts the newest commit off the top of a long history and leaves the initial
+filing at the prompt. Uncommitted edits are invisible to git, so it says so
+rather than looking like nothing changed.
 
 ## Status
 

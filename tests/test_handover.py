@@ -156,15 +156,46 @@ def demo():
             code, out, err = run(latest_command, "ISS-001")
             assert code is None and out.splitlines()[0] == "Handover H-007", out
 
-            # newest first, one line each
+            # Oldest first, one line each: the newest checkpoint is the one a
+            # resuming session wants, so it is the line left at the prompt.
+            # The header still opens its block.
             code, out, err = run(list_handovers, "ISS-001")
             assert code is None, err
             assert [line.split()[0] for line in out.splitlines()[1:]] == [
+                "H-001",
+                "H-002",
+                "H-004",
+                "H-007",
+            ], out
+
+            # --json keeps newest first - a parser has no cursor.
+            code, out, err = run(list_handovers, "ISS-001", as_json=True)
+            assert [h["id"] for h in json.loads(out)] == [
                 "H-007",
                 "H-004",
                 "H-002",
                 "H-001",
             ], out
+
+            # NEXT is the last line printed, even with a git block and files.
+            # Those are the state the checkpoint describes, so they read as
+            # context above it; printed after NEXT they left the cursor on a
+            # list of file paths instead of the one line to act on.
+            write_handover(
+                {
+                    "id": "H-009",
+                    "created_at": "2026-09-08T04:00:00+06:00",
+                    "issues": ["ISS-009"],
+                    "summary": "checkpoint with git",
+                    "next": "run the suite",
+                    "git": {"branch": "main", "head": "abc1234", "dirty": True},
+                    "files": ["src/cli_issue_tracker/render.py"],
+                }
+            )
+            code, out, err = run(latest_command, "ISS-009")
+            assert code is None, err
+            assert out.splitlines()[-2:] == ["NEXT", "run the suite"], out
+            assert "GIT" in out and "FILES" in out, out
 
             # 6. A lookup that finds nothing is exit 1 - grep's contract, the
             #    one `next` and `view` already keep.

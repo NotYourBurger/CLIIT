@@ -463,15 +463,15 @@ def brief(as_json=False):
         ("IN PROGRESS", brief_rows(in_progress, by_id) if in_progress else []),
         (
             "READY",
-            brief_rows(ready[:BRIEF_CAP], by_id) + omitted(briefing["ready_omitted"])
+            omitted(briefing["ready_omitted"]) + brief_rows(ready[:BRIEF_CAP][::-1], by_id)
             if ready
             else [],
         ),
         ("BLOCKED", brief_rows(blocked, by_id) if blocked else []),
         (
             "RECENTLY RESOLVED",
-            [line for issue in closed[:BRIEF_CAP] for line in resolved_lines(issue)]
-            + omitted(briefing["resolved_omitted"]),
+            omitted(briefing["resolved_omitted"])
+            + [line for issue in closed[:BRIEF_CAP][::-1] for line in resolved_lines(issue)],
         ),
         (
             "WARNINGS",
@@ -491,7 +491,12 @@ def brief(as_json=False):
     # the one already on screen. In reading order, PROJECT and NEXT are the
     # first things to scroll off on any repo with a few closed issues, and the
     # cursor ends up under RECENTLY RESOLVED - the least urgent thing here.
-    # Order inside a section is untouched; a header still opens its own block.
+    # A header opens its block and the items inside it end with the one you
+    # came for, which is why READY and RECENTLY RESOLVED are reversed above -
+    # after the cap, never before, or the cap starts hiding the wrong end. The
+    # sort keys are untouched: `ranked_actionable` and `closed_key` still hand
+    # back most-urgent and newest first, because `next` takes [0] from one of
+    # them and --json prints both. A parser has no cursor.
     print("\n\n".join(f"{name}\n" + "\n".join(lines) for name, lines in reversed(sections) if lines))
 
 
@@ -973,7 +978,19 @@ def log_issue(id):
     # encoding: git writes UTF-8; text=True alone decodes with the locale
     # default, which is cp1252 here and turns every accent into mojibake at
     # exit 0. Same reason storage.py passes it to every open().
-    git = ["git", "log", "--follow", "--date=short", "--format=%h  %ad  %s", "--", file_path]
+    # --reverse, so the newest commit is the line left at the prompt: a long
+    # history otherwise scrolls the commit you came for off the top and leaves
+    # the initial filing under the cursor. It works with --follow.
+    git = [
+        "git",
+        "log",
+        "--follow",
+        "--reverse",
+        "--date=short",
+        "--format=%h  %ad  %s",
+        "--",
+        file_path,
+    ]
     result = subprocess.run(git, capture_output=True, text=True, encoding="utf-8")
     if result.returncode != 0:
         # Not a git repo, or the file is outside it - git already said which.

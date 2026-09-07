@@ -273,15 +273,20 @@ def latest_command(id, as_json=False):
 
 
 def list_handovers(id, as_json=False):
-    """Every handover for one issue, newest first - the history, read to see how
-    the work moved. Nothing found is exit 1 like `latest`: this takes an id, and
-    an id that names no checkpoint is a failed lookup, not an empty filter."""
-    found = load_handovers(id)[::-1]
+    """Every handover for one issue - the history, read to see how the work
+    moved. Nothing found is exit 1 like `latest`: this takes an id, and an id
+    that names no checkpoint is a failed lookup, not an empty filter.
+
+    Oldest first on a screen, which is the order `load_handovers` already
+    returns: the newest checkpoint is the only one a resuming session usually
+    wants, so it is the line that has to end up at the prompt. --json stays
+    newest first - a parser has no cursor."""
+    found = load_handovers(id)
     if not found:
         print(f"No handover for {id}", file=sys.stderr)
         sys.exit(1)
     if as_json:
-        print(json.dumps([handover_as_dict(handover) for handover in found], indent=2))
+        print(json.dumps([handover_as_dict(handover) for handover in found[::-1]], indent=2))
         return
     print(f"HANDOVERS FOR {id}")
     print("\n".join(handover_rows(found)))
