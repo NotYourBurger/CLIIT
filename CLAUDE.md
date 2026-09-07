@@ -52,7 +52,10 @@ parsed issue, and the status/priority tuples) â†’ `deps.py` (what blocks what) â
 `check.py` (`validate.py`'s contract pointed the other way - every check that
 runs over files already on disk, and the whole of `issue check`; a verb that
 holds none of the filtering, blocking or ordering opinions `issues.py` exists
-for, so `cli.py` calls it directly the way it already calls `init`),
+for, so `cli.py` calls it directly the way it already calls `init`. `--plans`
+takes the whole verb rather than adding findings: it is a report on how much
+the work plans are kept, exit 0 either way, and the threshold it feeds is
+written down in ISS-031),
 `convert_id.py` (id allocation) and `init.py`, which imports `plan.rule_text`
 to write the workflow rule into `CLAUDE.md` / `AGENTS.md`.
 

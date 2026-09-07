@@ -193,6 +193,26 @@ def read_plan(id: str):
     return plan
 
 
+def git(*args, cwd=None):
+    """One read-only git call: its stdout, or None if it did not work.
+
+    None is the whole interface. Every caller here treats "no repo" and "git
+    said no" as the same absent answer and drops the block that needed it,
+    rather than raising into output whose point is that it is cheap to read.
+
+    stdout verbatim, not stripped: `git status --porcelain` puts the
+    staged/unstaged pair in the first two columns and " M a.txt" starts with a
+    space, so stripping the output eats one character of the first path. The
+    callers that want a single line strip it themselves.
+
+    `cwd` because the repo is wherever `.issues/` was found, which is not
+    necessarily where the command was typed."""
+    done = subprocess.run(
+        ["git", *args], capture_output=True, text=True, encoding="utf-8", cwd=cwd
+    )
+    return done.stdout if done.returncode == 0 else None
+
+
 def git_context():
     """(git dict, files) as they are right now, or (None, []) with no repo.
 
@@ -203,17 +223,6 @@ def git_context():
     one. Read-only, and a git failure costs the git block rather than the
     output - the same call `require_commits` makes about closing without a
     repo."""
-
-    def git(*args):
-        # stdout verbatim, not stripped: `git status --porcelain` puts the
-        # staged/unstaged pair in the first two columns and " M a.txt" starts
-        # with a space, so stripping the output eats one character of the first
-        # path. The callers that want a single line strip it themselves.
-        done = subprocess.run(
-            ["git", *args], capture_output=True, text=True, encoding="utf-8"
-        )
-        return done.stdout if done.returncode == 0 else None
-
     head = git("rev-parse", "--short", "HEAD")
     if head is None:
         return None, []

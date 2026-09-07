@@ -168,8 +168,9 @@ def release(id: str):
 @app.command("check")
 def check_files(
     as_json: bool = typer.Option(False, "--json", help="Print the findings as JSON"),
+    plans: bool = typer.Option(False, "--plans", help="Report on the work plans instead"),
 ):
-    check(as_json)
+    check(as_json, plans)
 
 
 @app.command("log")

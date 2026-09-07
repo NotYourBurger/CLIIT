@@ -9,6 +9,15 @@ The round trip is the reason this module exists. The file format is the API,
 and its worst failure does not raise: a parser bug returns a plausible dict,
 `write_issue` persists it over the prose, and the first person to notice is
 reading a mangled issue weeks later. Nothing else here can lose writing.
+
+`--plans` is the other half, and it is a report rather than a check: how many
+commits each work plan has, how stale it is, how much of it is ticked. ISS-031
+wrote the threshold down before the numbers were known - if fewer than three of
+the next five plans show more than one commit, the work plan goes the way of
+the handover. That is a judgement taken once by a person, so nothing here fails
+on it. The tool's job is to make the count cost one command instead of nobody
+ever taking it, which is exactly how the handover survived twenty-five issues
+without anyone noticing it was dead.
 """
 
 import json
@@ -19,6 +28,8 @@ from cli_issue_tracker.fields import PRIORITIES
 from cli_issue_tracker.fields import STATUSES
 from cli_issue_tracker.fields import blockers_of
 from cli_issue_tracker.plan import WORK
+from cli_issue_tracker.plan import git
+from cli_issue_tracker.plan import read_plan
 from cli_issue_tracker.plan import work_dir
 from cli_issue_tracker.storage import FIELD_ORDER
 from cli_issue_tracker.storage import join_file
@@ -45,8 +56,97 @@ def round_trip(path):
     return join_file(fields, body, first=FIELD_ORDER)
 
 
-def check(as_json=False):
-    """Exit 0 and say nothing, or exit 1 with every finding."""
+def plan_history(work, name):
+    """(commits that touched this plan, commits to HEAD since the last one).
+
+    (None, None) when git cannot answer, and (0, None) for a plan that exists
+    but has never been committed - a real state, since `start` seeds the file
+    and the commit comes later. `--follow` so a renamed plan keeps its count
+    rather than looking freshly seeded, which is the one number this report is
+    for."""
+    log = git("log", "--follow", "--format=%H", "--", name, cwd=work)
+    if log is None:
+        return None, None
+    shas = log.split()
+    if not shas:
+        return 0, None
+    since = git("rev-list", "--count", f"{shas[0]}..HEAD", cwd=work)
+    return len(shas), int(since.strip()) if since else None
+
+
+def plan_rows():
+    """One dict per plan on disk, in id order.
+
+    Every plan, including one whose issue is gone: the threshold counts plans,
+    so the row the findings pass would have thrown away is a row this needs.
+    Whether a stale count matters is the reader's call - `issue list` already
+    holds the status that answers it."""
+    work = work_dir()
+    rows = []
+    for name in sorted(os.listdir(work)) if os.path.isdir(work) else ():
+        if not name.endswith(".md"):
+            continue
+        id = name[: -len(".md")]
+        commits, since = plan_history(work, name)
+        # read_plan never raises and treats a missing section as absent, so a
+        # file nobody has put a `## Plan` in counts as zero of zero rather
+        # than dropping out of the report.
+        points = (read_plan(id) or {"checkpoints": []})["checkpoints"]
+        rows.append(
+            {
+                "id": id,
+                "commits": commits,
+                "commits_since": since,
+                "ticked": sum(1 for point in points if point["done"]),
+                "checkpoints": len(points),
+            }
+        )
+    return rows
+
+
+def plan_cells(row):
+    """One row as the cells a human reads. The two git columns are dropped
+    rather than filled with a placeholder when git could not answer - a git
+    failure costs the block and not the command, the call `git_context`
+    already makes."""
+    ticked = f"{row['ticked']}/{row['checkpoints']} ticked"
+    if row["commits"] is None:
+        return [row["id"], ticked]
+    commits = f"{row['commits']} commit{'s' * (row['commits'] != 1)}"
+    # A plan with no commit yet is not stale, it is unwritten, and "0 commits
+    # ago" would read as the opposite of what it means.
+    since = "not committed" if row["commits_since"] is None else (
+        f"last touched {row['commits_since']} commits ago"
+    )
+    return [row["id"], commits, since, ticked]
+
+
+def check_plans(as_json=False):
+    """The report. Always exit 0: these are numbers, not findings."""
+    rows = plan_rows()
+    if as_json:
+        print(json.dumps(rows, indent=2))
+        return
+    if not rows:
+        print("No work plans yet", file=sys.stderr)
+        return
+    table = [plan_cells(row) for row in rows]
+    # Same rule as `print_table`: every column as wide as its widest value,
+    # the last one unpadded so it cannot push anything off the terminal.
+    widths = [max(len(cells[column]) for cells in table) + 2 for column in range(len(table[0]) - 1)]
+    for cells in table:
+        print(("".join(f"{cell:<{width}}" for cell, width in zip(cells, widths)) + cells[-1]).rstrip())
+
+
+def check(as_json=False, plans=False):
+    """Exit 0 and say nothing, or exit 1 with every finding.
+
+    `--plans` is a different question about a different directory, so it takes
+    the whole verb rather than adding rows to the findings: one is what is
+    wrong, the other is a count of how the work is going."""
+    if plans:
+        return check_plans(as_json)
+
     path = require_issue_dir()
 
     findings, by_id = [], {}

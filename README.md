@@ -50,6 +50,7 @@ issue assign ISS-021 --to codex-1   # hand it over, no questions
 issue release ISS-021               # not mine any more
 issue check                         # everything wrong with the files, or nothing at all
 issue check --json                  # the same findings, for an agent
+issue check --plans                 # how much each work plan is actually kept
 issue log ISS-001                   # the issue's git history: who changed it, when, why
 issue start ISS-042                 # open the work, or pick it back up where it stopped
 issue start ISS-042 --anyway        # start it even though something blocks it
@@ -554,6 +555,37 @@ stderr — or on stdout as JSON under `--json`. A hand-edited `labels: auth,
 sessions` is deliberately not checked: after the split it is indistinguishable
 from two labels, so it is undetectable by construction, and a check that
 pretends otherwise is worse than none.
+
+### `issue check --plans`
+
+A different question about a different directory, so it takes the whole verb:
+not what is wrong with the files, but whether the work plans are being kept.
+
+```text
+ISS-026  1 commit   last touched 9 commits ago  8/8 ticked
+ISS-029  2 commits  last touched 0 commits ago  5/5 ticked
+ISS-031  0 commits  not committed               6/7 ticked
+```
+
+A plan is a file in a git repo, so git already holds the answer. The commit
+count is `git log --follow` on the plan; staleness is how many commits have
+landed since it last changed; the ticked count comes from the same reader
+`issue view` uses. It is a report and not a check — always exit 0, on stdout,
+`--json` for whoever is counting.
+
+This exists because ISS-026 shipped the work plan on an argument and put the
+risk on the record in the same breath: nothing enforces it, and a seeded plan
+that is never ticked is worse than no plan, because the next agent believes it.
+The handover died of exactly that and it took twenty-five issues to notice —
+because nobody was counting. ISS-031 wrote the threshold down before the
+numbers were known: after five issues worked through `issue start`, if fewer
+than three of five plans show more than one commit, the work plan goes the way
+of the handover and `docs/PRD/05-Work-Plan.md` records why.
+
+One thing to read the column with: it counts **commits, not edits**. A plan
+edited all the way through the work and committed once at the end reads as
+`1 commit`, the same as one that was seeded and abandoned. So the number is
+only worth the threshold if the plan is committed as it is ticked.
 
 ## File format
 

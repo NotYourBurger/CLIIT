@@ -11,6 +11,7 @@ Run: uv run python tests/test_check.py
 
 import json
 import os
+import subprocess
 import tempfile
 
 from helpers import REPO, run
@@ -53,6 +54,38 @@ priority: urgent
 
 # Typed by hand
 """
+
+
+# A plan with three checkpoints, one of them done. The ticked count needs no
+# git, so it is the one column asserted whether or not there is a repo.
+SEEDED = """# ISS-901 Work Plan
+
+## Plan
+
+- [x] a
+- [ ] b
+- [ ] c
+"""
+
+# The same plan, one more box ticked - a second commit against it, which is
+# the whole thing ISS-031 exists to count.
+KEPT = SEEDED.replace("- [ ] b", "- [x] b")
+
+
+def git(*args, cwd):
+    """A git call that never raises. Returns None when there is no git at all,
+    which is the case every assertion below stays loose about."""
+    try:
+        done = subprocess.run(
+            ["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", *args],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            cwd=cwd,
+        )
+    except OSError:
+        return None
+    return done.stdout if done.returncode == 0 else None
 
 
 def write(name, text, where=None):
@@ -126,12 +159,77 @@ if __name__ == "__main__":
             ], found
             assert all(item["problem"] for item in found), found
 
+            # 8. --plans is the other half of this verb: a report, not a
+            #    check. One row per plan, on stdout, exit 0 - the threshold
+            #    ISS-031 wrote down is a human decision taken once, not a
+            #    condition a tool can fail on.
+            work = os.path.join(issues, "work")
+            write("ISS-901.md", SEEDED, where=work)
+            code, out, err = run(check, plans=True)
+            assert code is None, (code, out, err)
+
+            # The ticked count comes from read_plan and needs no git, so it is
+            # exact whether or not there is a repo here.
+            assert "ISS-901" in out and "1/3 ticked" in out, out
+            # Every plan, the orphan included: the count needs the rows the
+            # findings pass would have thrown away.
+            assert "ISS-904" in out and "0/0 ticked" in out, out
+
+            # 9. The number the whole issue is about. With a repo, a plan
+            #    committed once and never touched again is the handover
+            #    failure with a count on it. Without git, none of this is
+            #    asserted - the same skip require_commits already makes.
+            if git("init", "-q", cwd=tmp) is not None:
+                assert git("add", "-A", cwd=tmp) is not None
+                assert git("commit", "-qm", "seeded", cwd=tmp) is not None
+
+                _, out, _ = run(check, plans=True)
+                assert "ISS-901  1 commit " in out, out
+                assert "last touched 0 commits ago" in out, out
+
+                # A commit that is not this plan is what staleness counts.
+                write("ISS-905.md", "# ISS-905 Work Plan", where=work)
+                git("add", "-A", cwd=tmp)
+                git("commit", "-qm", "another", cwd=tmp)
+                _, out, _ = run(check, plans=True)
+                assert "ISS-901  1 commit " in out, out
+                assert "last touched 1 commits ago" in out, out
+
+                # And a plan that is actually being kept: two commits, and the
+                # staleness clock back at zero.
+                write("ISS-901.md", KEPT, where=work)
+                git("add", "-A", cwd=tmp)
+                git("commit", "-qm", "ticked one", cwd=tmp)
+                _, out, err = run(check, plans=True)
+                assert "ISS-901  2 commits " in out, out
+                assert "2/3 ticked" in out, out
+
+                # --json is the same report, typed, for whoever counts the
+                # five. stdout stays parseable - the only thing on stderr is
+                # read_plan saying a shapeless fixture is shapeless, which is
+                # a diagnostic and not a row.
+                _, out, err = run(check, plans=True, as_json=True)
+                assert "ISS-905" in err and "recognise" in err, err
+                rows = {row["id"]: row for row in json.loads(out)}
+                assert rows["ISS-901"] == {
+                    "id": "ISS-901",
+                    "commits": 2,
+                    "commits_since": 0,
+                    "ticked": 2,
+                    "checkpoints": 3,
+                }, rows["ISS-901"]
+
             # 7. The twenty-six real files, which are the ones that matter.
             #    test_storage reads one issue off disk; this reads every one,
             #    and the day a parser change starts eating prose it fails
             #    here rather than in an issue nobody reopens for a month.
             os.environ["ISSUES_DIR"] = os.path.join(REPO, ".issues")
             code, out, err = run(check)
+            assert code is None, (code, out, err)
+
+            # And the report over the plans this repo really keeps - the rows
+            # the threshold in ISS-031 gets counted from.
+            code, out, err = run(check, plans=True)
             assert code is None, (code, out, err)
 
         finally:
