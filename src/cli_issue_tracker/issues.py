@@ -849,9 +849,10 @@ def brief(as_json=False):
         return
 
     # Ordered by what the reader does with it, not by what is cheapest to
-    # compute. The summary is first because it is the only part that says how
-    # big the project is, which is what tells you whether to trust the
-    # truncated sections under it.
+    # compute, and printed bottom-up - the list is reversed below. The summary
+    # is first because it is the only part that says how big the project is,
+    # which is what tells you whether to trust the truncated sections it is
+    # printed against.
     sections = [
         (
             "PROJECT",
@@ -888,7 +889,14 @@ def brief(as_json=False):
     # Empty sections are dropped rather than printed bare: a blank BLOCKED
     # header teaches a reader nothing, and this is the one command where a
     # section can cost lines and say nothing at all.
-    print("\n\n".join(f"{name}\n" + "\n".join(lines) for name, lines in sections if lines))
+    #
+    # Reversed, for the same reason `rank` orders `list` least-urgent-last: the
+    # terminal leaves you at the bottom, so the section you came for has to be
+    # the one already on screen. In reading order, PROJECT and NEXT are the
+    # first things to scroll off on any repo with a few closed issues, and the
+    # cursor ends up under RECENTLY RESOLVED - the least urgent thing here.
+    # Order inside a section is untouched; a header still opens its own block.
+    print("\n\n".join(f"{name}\n" + "\n".join(lines) for name, lines in reversed(sections) if lines))
 
 
 def search_issues(query, status=None, priority=None, labels=(), as_json=False):

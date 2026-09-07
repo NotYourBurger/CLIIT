@@ -157,20 +157,20 @@ is also what makes it safe to ask twice. `issue claim` is one call away.
 all*. It used to cost five calls — `list`, `list --ready`, `list --blocked`,
 `list in-progress`, then a read of whatever closed recently — and a person
 skimmed them while an agent paid for four tables it mostly discarded. The brief
-is one load of `.issues/` and seven sections, in the order you use them:
+is one load of `.issues/` and seven sections, printed bottom-up so that reading
+*up* from the prompt gives them in the order you use them:
 
 ```
-PROJECT
-Open: 8   In progress: 1   Ready: 7   Blocked: 1   Closed: 0
+WARNINGS
+ISS-004 references missing blocker ISS-042
 
-NEXT
-ISS-001  Issue 1
-Status:   in-progress
-Priority: medium
-Ready:    in progress
+RECENTLY RESOLVED
+ISS-020  Evidence-based closing
+         completed - issue close ships: four reasons, required message.
 
-IN PROGRESS
-ISS-001  Issue 1  medium
+BLOCKED
+ISS-003  Issue 3  medium
+         blocked by ISS-009 (open)
 
 READY
 ISS-002  Issue 2  high
@@ -178,17 +178,25 @@ ISS-004  Issue 4  medium
          blocked by ISS-042 (missing)
 +2 more
 
-BLOCKED
-ISS-003  Issue 3  medium
-         blocked by ISS-009 (open)
+IN PROGRESS
+ISS-001  Issue 1  medium
 
-RECENTLY RESOLVED
-ISS-020  Evidence-based closing
-         completed - issue close ships: four reasons, required message.
+NEXT
+ISS-001  Issue 1
+Status:   in-progress
+Priority: medium
+Ready:    in progress
 
-WARNINGS
-ISS-004 references missing blocker ISS-042
+PROJECT
+Open: 8   In progress: 1   Ready: 7   Blocked: 1   Closed: 0
 ```
+
+The reversal is the same convention `list` already holds to: a terminal leaves
+you at the bottom, so the thing you came for has to be the part already on
+screen. Printed in reading order, `PROJECT` and `NEXT` are the first two things
+to scroll away on any repo with a few closed issues. Order *inside* a section
+is untouched — a header still opens its own block — and `--json` keeps its
+logical order, because nothing scrolls in a parser.
 
 Every number in there comes from the function that already decides it —
 `next` is the head of the same ranked list `issue next` picks from, `ready` is

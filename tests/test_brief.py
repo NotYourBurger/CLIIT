@@ -97,10 +97,11 @@ def demo():
 
             found, data = agreed()
 
-            # Ordered by what the caller does with it. Nothing is closed yet,
-            # so RECENTLY RESOLVED is absent rather than printed empty.
+            # Printed bottom-up, so this list reads backwards and the prompt
+            # lands under PROJECT. Nothing is closed yet, so RECENTLY RESOLVED
+            # is absent rather than printed empty.
             assert list(found) == [
-                "PROJECT", "NEXT", "IN PROGRESS", "READY", "BLOCKED", "WARNINGS"
+                "WARNINGS", "BLOCKED", "READY", "IN PROGRESS", "NEXT", "PROJECT"
             ], list(found)
 
             # in-progress outranks the high-priority open one, the same
@@ -150,7 +151,7 @@ def demo():
 
             found, data = agreed()
             assert list(found) == [
-                "PROJECT", "NEXT", "IN PROGRESS", "READY", "RECENTLY RESOLVED"
+                "RECENTLY RESOLVED", "READY", "IN PROGRESS", "NEXT", "PROJECT"
             ], list(found)
 
             resolved = [issue["id"] for issue in data["recently_resolved"]]
@@ -177,7 +178,7 @@ def demo():
             # brief still exits 0 with valid JSON.
             close("ISS-001", "ISS-002", "ISS-003")
             found, data = agreed()
-            assert list(found) == ["PROJECT", "RECENTLY RESOLVED"], list(found)
+            assert list(found) == ["RECENTLY RESOLVED", "PROJECT"], list(found)
             assert data["next"] is None and data["ready"] == [], data
             assert data["summary"]["closed"] == 9, data["summary"]
         finally:
