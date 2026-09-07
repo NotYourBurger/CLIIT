@@ -42,21 +42,22 @@ change:
 
 `cli.py` (Typer, argument shapes only) → `issues.py` (the commands) → five
 layers under them, imported in this order and never the other way:
-`storage.py` (locating `.issues/`, and the frontmatter format: `split_file` /
+`storage.py` (locating `.issues/`, the frontmatter format: `split_file` /
 `join_file`, with `parse_issue` / `write_issue` as the issue-shaped wrapper
-around them) → `fields.py` (reading one parsed issue, the status/priority
-tuples, and the handover `SECTIONS` table) → `deps.py` (what blocks what) →
-`validate.py` (every check that exits before a write) → `render.py` (every
-table, line and dict that gets printed) → `handover.py` (what a handover is,
-plus its own four commands). Plus `convert_id.py` (id allocation) and
-`init.py`.
+around them, and the body format: `split_sections`) → `fields.py` (reading one
+parsed issue, and the status/priority tuples) → `deps.py` (what blocks what) →
+`plan.py` (what a work plan is: the workflow rule, the seed, the reader, and
+`git_context`) → `validate.py` (every check that exits before a write) →
+`render.py` (every table, line and dict that gets printed). Plus
+`convert_id.py` (id allocation) and `init.py`, which imports `plan.rule_text`
+to write the workflow rule into `CLAUDE.md` / `AGENTS.md`.
 
 Nothing imports `issues.py`. If something wants to, the thing it wants belongs
 in a lower layer — and Python raises on the cycle, so the suite says so at
 import time.
 
 `issues.py` is still the one large file on purpose: `list`, `next`, `brief`,
-`search`, `view`, `set`, `close` and `claim` share their filtering, their
+`search`, `view`, `set`, `close`, `claim` and `start` share their filtering, their
 blocking rule and their ordering, and a module per verb would give each verb a
 private copy of an opinion this repo has exactly one of. The split was the
 other way — the layers under the verbs, not the verbs. The pieces worth
@@ -80,30 +81,46 @@ knowing:
 - Dependencies are stored on the blocked issue only (`blocked_by`). The reverse
   direction (`blocks`) is always derived. One fact, one place.
 
-`handover.py` holds the second artifact: `.issues/handovers/H-NNN.md`, an
-append-only checkpoint saying where an issue's work stands. It keeps its own
-four verbs rather than adding them to `issues.py` — they share nothing with the
-issue verbs, and `issues.py` imports `latest_handover` for the one line
-`issue view` prints. The rules that are not obvious from the code:
+`plan.py` holds the second artifact: `.issues/work/ISS-NNN.md`, a live record
+of where an issue's work stands, seeded by `issue start` and edited by whatever
+is doing the work. It has no verbs of its own — `start`, `next`, `view` and
+`close` are all issue verbs that happen to read it, which is why they stayed in
+`issues.py`. It replaced `handover.py` (ISS-024, deleted in ISS-026); the
+handover was written at the end of a session, and sessions end at usage limits
+and closed terminals, so twenty-five issues shipped and zero handovers were
+written. The rules that are not obvious from the code:
 
-- **A handover is not a small issue.** The issue is the durable definition and
-  is edited; a handover is never edited, a correction is a new one. So `create`
-  does not set `in-progress`, does not claim, and does not touch `blocked_by` —
-  a `--blocker` is prose about why the session stopped, and `in_the_way` stays
-  the only thing that decides what blocked means.
-- **Frontmatter is what the tool computed, the body is what the session said.**
-  `done`, `remaining`, `decisions`, `discoveries` and `blockers` are lists of
-  sentences, and sentences have commas, so the comma-joined trick is out and
-  five more `evidence`-style JSON lines would spend the promise that these
-  files read fine in a diff. They are `## Heading` sections of `- ` bullets
-  instead, which costs the body parser in `split_sections` / `join_sections` —
-  exact inverses, guarded by `tests/test_handover.py` the way `test_storage.py`
-  guards the issue body.
-- **Git is read at creation and stored, never recomputed.** A `latest` that
-  re-shelled out to git would rewrite history every time it was called. A git
-  failure loses the git block, not the handover.
-- **Ordering is `(created_at, id)`,** never what `listdir` returned, so two
-  calls to `latest` cannot name different checkpoints.
+- **A plan is mutable, an issue is not churn.** The issue is the durable
+  definition and is edited rarely; the plan is the execution state and is
+  edited constantly. An agent whose approach evolves must never be rewriting
+  the issue description to record that. `git log --follow` is the audit trail
+  for how the plan changed, the same answer this repo already gives for issues.
+- **The CLI seeds, the agent edits.** `write_plan` is the only write in
+  `plan.py` and it happens once. There is deliberately no `plan check 3` — a
+  shell round trip mid-work is a decision point, which is a place to skip, and
+  ticking a box has to be cheaper than not ticking it. `start` reads before it
+  writes: reseeding over an existing plan is the one unrecoverable thing it
+  could do.
+- **The reader is built not to need the shape enforced.** `read_plan` never
+  raises, ignores headings it does not know, treats a missing section as absent
+  rather than empty, and notes an unrecognisable file on stderr instead of
+  failing. `bullets` rejoins a wrapped bullet, because a decision worth
+  recording is a sentence and a truncated sentence loses the half with the
+  reason in it.
+- **Git is recomputed at read time and never stored.** The opposite of the
+  handover's call, for the opposite reason: a stored HEAD in a live file is a
+  lie the moment anything commits. A git failure costs the git block, not the
+  output.
+- **One constant, two renderings.** `RULE` is the nine-line workflow rule;
+  `init` numbers it into the project file and every seeded plan carries
+  `RULE[4:8]` as bullets in an HTML comment. Line 8 — do not wait until the end
+  of the session — is the behavioural guarantee the whole feature rests on, and
+  it lives in the plan file because a rule at the top of `CLAUDE.md` is the
+  first thing a long session compacts away.
+- **`close` warns and closes anyway.** Unticked checkpoints go to stderr and
+  never block the write; the evidence rules already own completeness. The plan
+  is never moved or archived — it stays in `work/` as the account of how the
+  issue was built.
 
 ## Conventions this repo already holds to
 
@@ -134,9 +151,26 @@ local.
 
 ## Working in this repo
 
+Start substantial work with `issue start ISS-NNN`, which seeds the work plan
+described above; keep it ticked as you go rather than at the end.
+
 Features are specified before they are built: `docs/PRD/` holds the PRD,
 `.issues/ISS-NNN.md` holds the filed issue, and commits are prefixed with the
 issue id (`ISS-019: issue next - the one issue to work on now`). New behaviour
 lands with its own `tests/test_<thing>.py` — a script with a `demo()` that
 asserts and prints `ok`, using `tests/helpers.py:run()` to capture exit code,
 stdout and stderr. README.md is kept in sync as the user-facing spec.
+
+## Work plans
+
+When starting substantial work on an issue:
+
+1. Read the issue and any existing active work plan.
+2. If an unfinished plan exists, continue it instead of creating a new one.
+3. Otherwise create a work plan before modifying code.
+4. Break the work into meaningful checkpoints.
+5. Mark each checkpoint complete immediately after completing it.
+6. Record important discoveries or decisions as they happen.
+7. Keep the Current and Next fields accurate.
+8. Do not wait until the end of the session to record progress.
+9. Close the issue only when the plan and acceptance criteria are complete.

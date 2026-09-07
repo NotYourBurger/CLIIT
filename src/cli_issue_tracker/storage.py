@@ -60,10 +60,10 @@ def require_issue_dir() -> str:
 def split_file(file_path: str) -> tuple[dict, str] | None:
     """One frontmatter file as (fields, body), or None if it has no frontmatter.
 
-    This is the file format with nothing issue-shaped left in it: parse_issue is
-    this plus its required keys, and a handover is this plus its own. Written
-    out because a second frontmatter reader beside the first is how the two
-    start disagreeing about what a `---` means."""
+    This is the file format with nothing issue-shaped left in it: parse_issue
+    is this plus its required keys. Written out because a second frontmatter
+    reader beside the first is how the two start disagreeing about what a
+    `---` means."""
     with open(file_path, "r", encoding="utf-8") as file:
         lines = file.read().splitlines()
 
@@ -154,3 +154,22 @@ def read_issue(id: str) -> dict | None:
     else:
         return None
        
+
+def split_sections(body: str) -> dict:
+    """A Markdown body as {heading: text}. `## ` at the start of a line opens a
+    section and everything until the next one belongs to it.
+
+    The second half of this file's job: `split_file` is the frontmatter format,
+    this is the body format. Anything before the first heading - a title, an
+    HTML comment - belongs to no section and is dropped, so a hand-edited file
+    can carry a note above them. It never raises and never rejects: a plan is
+    written by whatever is editing it, and a reader that could refuse one would
+    be a reader an agent can break by adding a paragraph."""
+    found, heading = {}, None
+    for line in body.splitlines():
+        if line.startswith("## "):
+            heading = line[3:].strip()
+            found[heading] = []
+        elif heading is not None:
+            found[heading].append(line)
+    return {heading: "\n".join(lines).strip() for heading, lines in found.items()}

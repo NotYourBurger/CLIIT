@@ -48,10 +48,8 @@ issue claim ISS-021 --by codex-1    # --by defaults to $ISSUE_USER, then git con
 issue assign ISS-021 --to codex-1   # hand it over, no questions
 issue release ISS-021               # not mine any more
 issue log ISS-001                   # the issue's git history: who changed it, when, why
-issue handover create ISS-042 --summary "..." --next "..."   # where the work stands now
-issue handover latest ISS-042       # the newest checkpoint, for the next session
-issue handover list ISS-042         # every checkpoint, oldest first
-issue handover view H-006           # one checkpoint by its own id
+issue start ISS-042                 # open the work, or pick it back up where it stopped
+issue start ISS-042 --anyway        # start it even though something blocks it
 ```
 
 Statuses are `in-progress`, `open` and `closed` — `closed` is written by
@@ -387,7 +385,7 @@ reads it; everything else works off the filename, so issues filed under an old
 prefix keep listing and numbering restarts under the new one instead of
 continuing across both.
 
-## Handover
+## Work plans
 
 An issue says what the work is. It does not say where the work currently
 stands, and that gap is paid for once per session: you pick up
@@ -395,99 +393,107 @@ stands, and that gap is paid for once per session: you pick up
 session already made, and rediscover the constraint that changed the approach.
 All of that existed — in a conversation that is gone.
 
-A handover is the delta a session produced, written deliberately at the end of
-it:
+A work plan is that state, kept in a file while the work happens:
 
 ```bash
-issue handover create ISS-042 \
-  --summary "Cycle detection is implemented; CLI error handling remains." \
-  --done "Added DFS cycle detection" \
-  --remaining "Improve the CLI cycle error" \
-  --decision "Validate the whole graph before writing either issue" \
-  --discovered "Missing blockers intentionally remain non-blocking" \
-  --blocker "No Windows box to verify on" \
-  --resume-at "src/issues.py:set_issue" \
-  --next "Update the cycle error rendering, then run tests/test_blockers.py"
+issue start ISS-042
 ```
 
-`--summary` and `--next` are required and may not be blank; everything else is
-optional and every list flag repeats. A vague `--next` ("continue working on
-the issue") is the failure this command exists to prevent, so it asks for the
-nearest concrete continuation point instead.
+`start` sets the issue `in-progress`, claims it as `$ISSUE_USER`, and seeds
+`.issues/work/ISS-042.md` — a Markdown skeleton of `## Goal`, `## Plan`,
+`## Decisions`, `## Discoveries`, `## Current` and `## Next`. You fill it in as
+you work: the `## Plan` bullets are `- [ ]` checkpoints, ticked to `- [x]` the
+moment each one lands.
 
-Handovers are append-only. The issue is the durable definition and gets edited;
-a handover is a checkpoint in its execution and never does — a correction is a
-new handover, and `issue log` shows when each one landed. Which is also why
-`create` does not set `in-progress`, does not claim, and does not touch
-`blocked_by`: `--blocker "no Windows box"` is prose about why this session
-stopped, while `blocked_by: ISS-014` is the project dependency graph, and the
-first must never write the second.
+Nothing in the CLI edits the plan after that. There is deliberately no
+`plan check 3` or `plan note "..."` — every one of those is a shell round trip
+in the middle of the work, which is a decision point, which is a place to skip.
+Ticking a box has to be cheaper than not ticking it, or it does not happen, and
+"it does not happen" is the whole reason this replaced the handover it grew
+out of: that one was written at the end of a session, and a session usually
+ends at a usage limit, a crash or a closed terminal. Twenty-five issues shipped
+and not one handover was ever written.
 
-Git position is captured automatically at creation — branch, short HEAD,
-whether the tree was dirty, and the paths of the changed files, capped so a
-noisy tree cannot bury the rest. Paths only, never a diff. It is read once and
-stored: a `latest` that re-ran `git` would quietly rewrite history every time it
-was called. Outside a repo the command still works and simply records no git
-block, because the context is worth keeping either way.
+Which is why the record is created *before* the first edit rather than after
+the last one. If the session disappears between two ticks, the loss is one
+checkpoint, not one session.
 
-One handover may name several issues — `issue handover create ISS-042 ISS-045`
-— and is then found from either of them, stored once. The first id is the
-primary one.
+Checkpoints are recoverable units of progress — `Login UI`, not `Open
+auth.py` / `Add import` / `Save file`. Three to ten is the rule of thumb;
+nothing enforces it, because a tool that rejected an eleventh would be wrong
+about a large issue.
 
-Reading it back:
+`start` is also the resume path. Run it again and it prints the plan instead of
+reseeding it — an existing plan is never clobbered, truncated or overwritten,
+so an agent never has to work out first whether work exists. It refuses a
+blocked issue, naming the blockers and writing nothing; `--anyway` starts it
+regardless and records in the plan header that the call was made.
+
+Reading it back is `issue next`, which already names the right issue and now
+says what was happening there:
 
 ```text
-$ issue handover latest ISS-042
-Handover H-006
-ISS-042 - 2026-09-07 03:18
+$ issue next
+ISS-042  Login and signup
+Status:   in-progress
+Priority: high
+Ready:    in progress
 
 GIT
-feature/dependency-validation @ 81af03c
-Working tree has uncommitted changes.
+feature/auth @ 81af03c - uncommitted
+src/auth/provider.ts
+src/pages/login.tsx
 
-FILES
-src/issues.py
-tests/test_blockers.py
+PLAN  6/10
+- [ ] Connect authentication state to the application
+- [ ] Add the logout flow
 
-SUMMARY
-Cycle detection is implemented; CLI error handling remains.
+DECISIONS
+- Authentication state lives in AuthProvider
 
-DONE
-- Added DFS cycle detection
-
-REMAINING
-- Improve the CLI cycle error
-
-RESUME AT
-src/issues.py:set_issue
+CURRENT
+Connecting successful login to AuthProvider.
 
 NEXT
-Update the cycle error rendering, then run tests/test_blockers.py
+Wire the login result into AuthProvider, then handle the failure branch.
 ```
 
-An empty section is not printed at all. `latest` and `view` take `--json`, and
-there every optional list is present and empty rather than missing, so an agent
-never has to branch on a key; `git` is `null` outside a repo, because "we could
-not read it" is not "the tree was clean". `list` is the same handovers oldest
-first, one line each, so the newest checkpoint — the one a resuming session
-usually wants — is the line left at the prompt; `--json` stays newest first.
-`GIT` and `FILES` are printed above the sections for the same reason: they are
-the state the checkpoint describes, and `NEXT` is the one line the next session
-acts on, so it has to be the last one printed. All three exit 1 when there is
-nothing to find, the same contract `issue next` and `issue view` keep.
+Git is read at display time and never stored — the plan is live, so a stored
+HEAD would be a lie the moment anything committed. Paths only, never a diff,
+capped so a noisy tree cannot bury the rest, and nothing at all outside a repo,
+because "we could not read it" is not "the tree was clean". `GIT` sits above
+the plan because `NEXT` is the line acted on and the terminal leaves the last
+line printed right above the prompt.
 
-`issue view` shows a three-line pointer when an issue has one — the id, the
-first line of the summary, the next action — and nothing at all when it does
-not. The full handover stays one command away rather than being inlined, which
-is the duplication this whole split exists to avoid.
+`next` stays read-only: asking what to work on must not claim, assign or start
+it. `start` is the command that does that.
 
-Handovers live in `.issues/handovers/H-001.md`, made on demand, in the same
-frontmatter-plus-body format the issues use. The computed fields are
-frontmatter and the prose is the body, under `## Summary`, `## Done` and the
-rest — five JSON arrays of sentences would have spent the promise that these
-files read fine in a diff. Manual editing stays possible: sections may be
-reordered, one the tool does not know is ignored, and a missing one reads as
-empty.
+`issue view` shows three lines for an issue you are *not* working on — how far
+it got, where it stands, what is next — and nothing at all when there is no
+plan:
+
+```text
+Work plan: 6/10 checkpoints
+Current: Connecting successful login to AuthProvider.
+Next:    Wire the login result into AuthProvider.
+```
+
+Both `next --json` and `view --json` carry a `plan` object, absent when there
+is none.
+
+`issue close` warns on stderr when checkpoints are still unticked and closes
+anyway — a checkpoint that stopped being relevant must not be able to veto a
+close, and the evidence rules already own the question of completeness. The
+plan is not moved or archived: it stays in `work/` as the account of how the
+issue was actually built, and `git log` says how it got that way.
+
+Nothing enforces any of this. A seeded plan that is never ticked is worse than
+no plan — it is confidently stale and the next agent believes it. What changes
+the odds is that the plan is created before the work, is edited with the tool
+the agent is already holding, and carries its own instructions: `issue init`
+writes the nine-line workflow rule into `CLAUDE.md` or `AGENTS.md`, and every
+seeded plan repeats the four lines that matter mid-session as an HTML comment
+at the top of the file. Both come from one constant in the source.
 
 ## File format
 
@@ -518,8 +524,10 @@ does not know about are kept too, so you can add your own by hand. Ids are
 allocated as one past the highest existing id with the same prefix, so deleting
 an issue never reuses a live id.
 
-Handovers are the same format one directory down, in `.issues/handovers/`,
-numbered `H-001` against that directory alone — see [Handover](#handover).
+Work plans are one directory down, in `.issues/work/ISS-NNN.md`, and are the
+one artifact here with no frontmatter at all — the issue already carries the
+id and the metadata, and the plan is its execution state rather than a second
+thing with its own identity. See [Work plans](#work-plans).
 
 ## Layout
 
@@ -529,7 +537,7 @@ numbered `H-001` against that directory alone — see [Handover](#handover).
 | `issues.py`     | what each command does                                 |
 | `fields.py`     | reading one issue's fields, and what they may hold     |
 | `deps.py`       | what blocks what                                       |
-| `handover.py`   | what a handover is, and its four commands              |
+| `plan.py`       | what a work plan is: the rule, the seed, the reader    |
 | `validate.py`   | the checks that run before anything is written         |
 | `render.py`     | how output looks, human and `--json`                   |
 | `storage.py`    | finding `.issues/`, and the file format                 |
@@ -546,7 +554,7 @@ rather than looking like nothing changed.
 ## Status
 
 Working: `init`, `create`, `list`, `brief`, `next`, `search`, `view`, `set`,
-`close`, `claim`, `assign`, `release`, `log`, `handover`.
+`close`, `claim`, `assign`, `release`, `log`, `start`.
 
 Run every check with `uv run python tests/all.py`. They live in `tests/`, one
 file per thing that can break:
@@ -562,7 +570,7 @@ file per thing that can break:
 | `test_assignee.py`   | ownership: the one write with a precondition, and the race  |
 | `test_next.py`       | the `next` ranking, every tie-breaker, and the empty case    |
 | `test_close.py`      | closing: the reasons, the evidence rule, and what it refuses |
-| `test_handover.py`   | the handover body round trip, ordering, and the split       |
+| `test_plan.py`       | seeding, resuming, the blocked refusal, and a mangled plan  |
 | `test_encoding.py`   | that nothing reads or writes text at the locale default     |
 
 No framework: each file is a script with a `demo()` that asserts and prints

@@ -20,8 +20,8 @@ from cli_issue_tracker.fields import assignee_of
 from cli_issue_tracker.fields import blockers_of
 from cli_issue_tracker.fields import labels_of
 from cli_issue_tracker.fields import priority_of
-from cli_issue_tracker.fields import SECTIONS
 from cli_issue_tracker.fields import resolution_of
+from cli_issue_tracker.plan import SECTIONS as PLAN_SECTIONS
 from cli_issue_tracker.deps import blocked_note
 from cli_issue_tracker.deps import blocks
 from cli_issue_tracker.deps import is_ready
@@ -223,72 +223,72 @@ def as_dict(issue, by_id):
     return dumped
 
 
-def handover_lines(handover):
-    """The whole handover, for a human. Headings in caps like the rest of this
-    tool's output, and an empty section is not printed at all - `absent means
-    absent` reads as well on a screen as it does in a file.
+def plan_lines(plan):
+    """Where the work stands, for a human. Every block is skipped when it is
+    empty, so a freshly seeded plan renders as nothing at all rather than as
+    six headings saying the agent has done six kinds of nothing.
 
-    NEXT is last because it is the line the next session acts on, and the
-    terminal leaves the last line printed right above the prompt - the same
-    reason `list` sorts least-urgent-first. GIT and FILES go above the sections
-    for that same reason: they are the state the checkpoint describes, so they
-    read as context, and printed after NEXT they left the cursor on a list of
-    file paths instead of the one instruction."""
-    date = handover["created_at"].replace("T", " ")[:16]
-    lines = [f"Handover {handover['id']}", f"{' '.join(handover['issues'])} - {date}"]
-
-    git = handover.get("git")
-    if git:
-        lines += ["", "GIT", f"{git['branch']} @ {git['head']}"]
-        lines.append(
-            "Working tree has uncommitted changes." if git["dirty"] else "Working tree was clean."
-        )
-    if handover.get("files"):
-        lines += ["", "FILES"] + list(handover["files"])
-
-    for key, heading, is_list in SECTIONS:
-        value = handover.get(key)
-        if not value:
+    Unchecked checkpoints only. The done ones are the count, and printing them
+    back at a session that is resuming is the noise the count exists to
+    replace. NEXT is last because it is the line acted on, and the terminal
+    leaves the last line printed right above the prompt - ISS-025's rule, the
+    same one that puts GIT above all of this."""
+    lines = []
+    if plan["checkpoints"]:
+        done = sum(1 for point in plan["checkpoints"] if point["done"])
+        lines += ["", f"PLAN  {done}/{len(plan['checkpoints'])}"]
+        lines += [f"- [ ] {point['text']}" for point in plan["checkpoints"] if not point["done"]]
+    for key, heading, is_list in PLAN_SECTIONS:
+        value = plan.get(key)
+        # The goal is the issue's title and the caller has just printed it;
+        # `plan_block` shows it because there the block stands on its own.
+        if not value or key == "goal":
             continue
         lines.append("")
         lines.append(heading.upper())
         lines += [f"- {item}" for item in value] if is_list else value.splitlines()
+    return lines[1:]
+
+
+def plan_block(plan):
+    """The three lines `issue view` shows: how far the work got, where it
+    stands, and what is next. A pointer, not the plan - `issue start` prints
+    the checkpoints and the file itself is one `cat` away, so inlining them in
+    the middle of an issue would be the duplication this split exists to avoid.
+
+    No Goal line: `view` prints the issue's title and body right under this,
+    and in a seeded plan the goal is that title."""
+    done = sum(1 for point in plan["checkpoints"] if point["done"])
+    lines = [f"Work plan: {done}/{len(plan['checkpoints'])} checkpoints"]
+    for name, key in (("Current", "current"), ("Next", "next")):
+        if plan[key]:
+            # The first line only, and padded to a column: these are prose
+            # fields, and a three-line Current would bury the Next under it.
+            lines.append(f"{name + ':':<9}{plan[key].splitlines()[0]}")
     return lines
 
 
-def handover_rows(handovers):
-    """One line each for `handover list`: id, the day, and the first line of
-    the summary. The day and not the timestamp - the history is read to see how
-    the work moved, and the minute it was written is in the file."""
-    return [
-        f"{handover['id']}  {handover['created_at'][:10]}  {handover['summary'].splitlines()[0]}"
-        for handover in handovers
-    ]
-
-
-def handover_reference(handover):
-    """The three lines `issue view` shows when continuation context exists. The
-    first line of each field only: this is a pointer to the handover, and a
-    view that inlined the whole thing would be the duplication the PRD spends a
-    section refusing."""
-    return [
-        f"Latest handover: {handover['id']} - {handover['created_at'][:10]}",
-        handover["summary"].splitlines()[0],
-        f"Next: {handover['next'].splitlines()[0]}",
-    ]
-
-
-def handover_as_dict(handover):
-    """The handover as JSON wants it. Every optional list is present and empty
-    rather than absent, unlike the issue renderings: a handover has a fixed
-    shape decided by this tool, so a consumer that has to branch on a missing
-    `blockers` key is paying for a fact we already know. `git` is None outside
-    a repo, because "we could not read it" is not the same as "clean"."""
+def plan_as_dict(plan):
+    """The plan as JSON wants it. Every key present, unlike the issue
+    renderings: the shape is decided by this tool rather than by what an old
+    file happens to carry, so a consumer branching on a missing `discoveries`
+    would be paying for a fact we already know."""
     return {
-        "id": handover["id"],
-        "created_at": handover["created_at"],
-        "issues": handover["issues"],
-        **{key: handover.get(key, [] if is_list else "") for key, _, is_list in SECTIONS},
-        "git": handover.get("git"),
-        "files": handover.get("files", []),
+        "id": plan["id"],
+        "checkpoints": plan["checkpoints"],
+        **{key: plan.get(key, [] if is_list else "") for key, _, is_list in PLAN_SECTIONS},
     }
+
+
+def git_lines(git, files):
+    """What actually changed, under the plan's account of what was meant to.
+    Nothing at all outside a repo - "we could not read it" is not "the tree was
+    clean", and inventing a branch would be claiming a fact.
+
+    Above the plan sections rather than below them, which is ISS-025's rule:
+    this is the state the work is in, and printed last it would leave a list of
+    file paths at the prompt instead of the one line saying what to do."""
+    if not git:
+        return []
+    said = f"{git['branch']} @ {git['head']}"
+    return ["GIT", said + (" - uncommitted" if git["dirty"] else " - clean")] + list(files)

@@ -8,7 +8,7 @@ sharing is why this was one file in the first place and why it stays one: a
 module per verb would give each verb a private copy of an opinion this repo has
 exactly one of.
 
-Imports go one way only - storage, fields, deps, validate, render, handover,
+Imports go one way only - storage, fields, deps, plan, validate, render,
 then here. Nothing imports this module; if something wants to, the thing it
 wants belongs in a lower one.
 """
@@ -63,15 +63,21 @@ from cli_issue_tracker.render import console
 from cli_issue_tracker.render import describe
 from cli_issue_tracker.render import next_lines
 from cli_issue_tracker.render import omitted
+from cli_issue_tracker.render import git_lines
+from cli_issue_tracker.render import plan_as_dict
+from cli_issue_tracker.render import plan_block
+from cli_issue_tracker.render import plan_lines
 from cli_issue_tracker.render import print_table
-from cli_issue_tracker.render import handover_reference
 from cli_issue_tracker.render import resolved_lines
 from cli_issue_tracker.storage import require_issue_dir
 from cli_issue_tracker.storage import now
 from cli_issue_tracker.storage import parse_issue
 from cli_issue_tracker.storage import read_issue
 from cli_issue_tracker.storage import write_issue
-from cli_issue_tracker.handover import latest_handover
+from cli_issue_tracker.plan import git_context
+from cli_issue_tracker.plan import plan_path
+from cli_issue_tracker.plan import read_plan
+from cli_issue_tracker.plan import write_plan
 
 
 def create_issue(title: str, description: str, priority: str = "medium", labels=()):
@@ -344,14 +350,90 @@ def next_issue(as_json=False):
 
     issue = candidates[0]
 
+    # The plan is where the work stands and git is what actually changed - the
+    # two halves that used to live in a conversation. Read here rather than in
+    # `ranked_actionable`: it is the chosen issue's plan and not a term in the
+    # ordering, and reading one per candidate would cost a file read for every
+    # issue in the repo to print one of them.
+    plan = read_plan(issue["id"])
+
     if as_json:
         # The same as_dict `list --json` prints, one object rather than an
         # array of one - the caller asked for the next issue, not for a list
-        # that happens to be short.
-        print(json.dumps(as_dict(issue, by_id), indent=2))
+        # that happens to be short. Plus the plan, absent when there is none,
+        # the rule `resolution` already follows.
+        dumped = as_dict(issue, by_id)
+        if plan:
+            dumped["plan"] = plan_as_dict(plan)
+        print(json.dumps(dumped, indent=2))
         return
 
-    print("\n".join(next_lines(issue, by_id)))
+    lines = next_lines(issue, by_id)
+    if plan:
+        git, files = git_context()
+        for block in (git_lines(git, files), plan_lines(plan)):
+            if block:
+                lines += [""] + block
+    print("\n".join(lines))
+
+
+def said_path(path):
+    """A path to type, relative to where the caller is standing. Windows has no
+    relative path between two drives, and an absolute one is still correct."""
+    try:
+        relative = os.path.relpath(path)
+    except ValueError:
+        # Windows has no relative path between two drives.
+        return path
+    # A path that climbs out of the tree is longer than the absolute one and
+    # harder to read; ".." means the caller is not standing anywhere near it.
+    return path if relative.startswith("..") else relative
+
+
+def start_issue(id, anyway=False):
+    """Open work on one issue: set it in-progress, claim it, and put the plan
+    file in front of the agent.
+
+    One command whether the work is new or being resumed, because an agent that
+    first has to work out which situation it is in will sometimes work it out
+    wrongly, and the cost of being wrong is the plan. Seed if absent, print if
+    present - never reseed."""
+    by_id = {issue["id"]: issue for issue in load_issues()}
+    issue = by_id.get(id)
+    if issue is None:
+        print(f"Issue {id} Was Not Found", file=sys.stderr)
+        sys.exit(1)
+
+    # Discouraged, not forbidden: the blocker may well not stop this
+    # particular work, and only the person looking at both can say. Refusing
+    # before anything is written is the same rule `require_blockers` keeps -
+    # an in-progress issue with no plan is the exact state this feature exists
+    # to make impossible.
+    stuck = in_the_way(issue, by_id)
+    if stuck and not anyway:
+        print(
+            f"{id} is blocked by {said_blockers(stuck, by_id)} - "
+            f"pass --anyway to start it regardless",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    issue["status"] = "in-progress"
+    who = current_user()
+    if who:
+        issue["assignee"] = who
+    write_issue(issue)
+
+    # Read before written: an existing plan is the only copy of everything the
+    # last session worked out, and reseeding on top of it is the one
+    # unrecoverable thing this command could do.
+    plan = read_plan(id)
+    path = plan_path(id) if plan else write_plan(id, issue["title"], stuck)
+    print(f"{id} is in progress - plan at {said_path(path)}")
+    if plan:
+        lines = plan_lines(plan)
+        if lines:
+            print("\n".join(lines))
 
 
 def closed_key(issue):
@@ -562,10 +644,18 @@ def view_issue(id, as_json=False):
     # Both directions need the others: `blocks` is stored nowhere.
     by_id = {other["id"]: other for other in load_issues()}
 
+    plan = read_plan(id)
+
     if as_json:
         # body included verbatim - it is the field the table cannot carry and
-        # the one an external reader actually wants.
-        print(json.dumps(as_dict(issue, by_id), indent=2))
+        # the one an external reader actually wants. The plan goes in too,
+        # absent when there is none: `next --json` carries it, and a consumer
+        # having to remember which of the two commands has the key is a branch
+        # that exists for no reason.
+        dumped = as_dict(issue, by_id)
+        if plan:
+            dumped["plan"] = plan_as_dict(plan)
+        print(json.dumps(dumped, indent=2))
         return
 
     # Issues written before updated_at existed have none - say so rather than
@@ -616,14 +706,14 @@ def view_issue(id, as_json=False):
                 label = evidence_label(item["type"]) + ":"
                 console.print(f"{label:<11} {item['value']}", markup=False)
 
-    # A pointer, not the handover: three lines saying continuation context
-    # exists and where. Inlining the whole thing here is the duplication the
-    # handover PRD spends a section refusing, and `issue handover latest` is
-    # the command that already prints it. Nothing at all when there is none.
-    handover = latest_handover(id)
-    if handover:
+    # A pointer, not the plan: where the work stands, for someone who is not
+    # doing it. `issue start` prints the checkpoints and the file itself is one
+    # `cat` away, so inlining them here would be the duplication this whole
+    # split exists to avoid. Nothing at all when there is no plan - an empty
+    # block reads as work that started and produced nothing.
+    if plan:
         console.print()
-        for line in handover_reference(handover):
+        for line in plan_block(plan):
             console.print(line, markup=False, highlight=False)
 
     console.print(Markdown(issue["body"]))
@@ -900,6 +990,19 @@ def close_issue(
         issue.pop("evidence", None)
     write_issue(issue)
     print(f"{id} is closed - {reason}")
+
+    # Read after the write, not before: closing is what this command is for and
+    # an unfinished checkpoint must never be able to veto it. The acceptance
+    # criteria already own the question of completeness, and a checkpoint that
+    # stopped being relevant halfway through the work is the common case. So
+    # the divergence is made visible and nothing more - stderr, where every
+    # other note to a human goes, leaving stdout parseable.
+    plan = read_plan(id)
+    left = [point["text"] for point in plan["checkpoints"] if not point["done"]] if plan else []
+    if left:
+        print(f"{id} closed with {len(left)} checkpoint(s) unticked:", file=sys.stderr)
+        for text in left:
+            print(f"  - {text}", file=sys.stderr)
 
     # Closing is the one write with consequences in other files, and this is
     # now the only thing that closes. by_id holds the dict that was just

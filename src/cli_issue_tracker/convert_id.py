@@ -3,18 +3,14 @@ import os
 from cli_issue_tracker.storage import id_prefix
 
 
-def next_id(issues_dir: str, prefix: str = None) -> str:
+def next_id(issues_dir: str) -> str:
     """Next free id: one past the highest already in issues_dir under the
-    given prefix. Ids carrying some other prefix are counted separately, so
+    current prefix. Ids carrying some other prefix are counted separately, so
     switching prefixes does not renumber on top of the issues already there.
 
-    The prefix is an argument because handovers allocate `H-NNN` against their
-    own directory and must not be renamed by $ISSUE_PREFIX - that knob is for
-    the issues. It defaults to it, which is what `create` still wants.
-    ponytail: a repo that sets ISSUE_PREFIX=H gets ids that look alike in two
-    directories - they cannot collide on disk and `handover view` only ever
-    searches one of them, so this stays a naming oddity rather than a bug."""
-    prefix = prefix or id_prefix()
+    One id space, because issues are the only thing this tool numbers - a work
+    plan is named after the issue it belongs to and allocates nothing."""
+    prefix = id_prefix()
     nums = []
     for name in os.listdir(issues_dir):
         stem, ext = os.path.splitext(name)
@@ -50,11 +46,6 @@ if __name__ == "__main__":
             assert next_id(d) == "BUG-002"
             os.environ["ISSUE_PREFIX"] = "ISS"
             assert next_id(d) == "ISS-010", "BUG ids must not bump the ISS count"
-
-            # An explicit prefix wins over the environment - handovers are
-            # always H-NNN, whatever the issues in this repo are called.
-            os.environ["ISSUE_PREFIX"] = "BUG"
-            assert next_id(d, "H") == "H-001"
         finally:
             os.environ.pop("ISSUE_PREFIX", None)
     print("ok")
