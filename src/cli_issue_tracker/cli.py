@@ -11,6 +11,7 @@ from cli_issue_tracker.issues import close_issue
 from cli_issue_tracker.issues import log_issue
 from cli_issue_tracker.issues import claim_issue
 from cli_issue_tracker.check import check
+from cli_issue_tracker.events import event_command
 from cli_issue_tracker.init import init
 import sys
 app = typer.Typer()
@@ -176,3 +177,17 @@ def check_files(
 @app.command("log")
 def log(id):
     log_issue(id)
+
+
+# Not routed through issues.py: an event shares none of the filtering,
+# blocking or ordering opinions that module exists for - `check` and `init`
+# are the same call, made directly here.
+@app.command("event")
+def event(
+    id: str,
+    text: str = typer.Argument(None, help="What happened; omit to print the log instead"),
+    type: str = typer.Option("note", "--type", help="A free label: probe, lifecycle, snapshot, ..."),
+    stdin: bool = typer.Option(False, "--stdin", help="Read TEXT from standard input instead"),
+    as_json: bool = typer.Option(False, "--json", help="Print the log as JSON (read path only)"),
+):
+    event_command(id, text, type, as_json, stdin)

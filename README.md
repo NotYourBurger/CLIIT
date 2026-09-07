@@ -54,6 +54,10 @@ issue check --plans                 # how much each work plan is actually kept
 issue log ISS-001                   # the issue's git history: who changed it, when, why
 issue start ISS-042                 # open the work, or pick it back up where it stopped
 issue start ISS-042 --anyway        # start it even though something blocks it
+issue event ISS-042 "worker started, 0 tool calls" --type lifecycle
+issue event ISS-042 --type probe --stdin < probe.log   # pipe stdout in instead of quoting it
+issue event ISS-042                 # print what has been recorded so far
+issue event ISS-042 --json          # the same log, for an agent
 ```
 
 Statuses are `in-progress`, `open` and `closed` — `closed` is written by
@@ -538,6 +542,47 @@ writes the nine-line workflow rule into `CLAUDE.md` or `AGENTS.md`, and every
 seeded plan repeats the four lines that matter mid-session as an HTML comment
 at the top of the file. Both come from one constant in the source.
 
+## Event log
+
+A work plan is what an agent decided and learned, in its own prose. It is not
+where a running process should put a fact - a probe's stdout, a worker
+starting or being killed, a snapshot of another file at one instant - because
+those land mid-write, from something that may not be an agent at all, and
+mixing a machine-appended line into hand-edited prose makes both worse to
+read. `issue event` gives that fact its own durable, append-only home:
+
+```bash
+issue event ISS-042 "worker started, 0 tool calls" --type lifecycle
+```
+
+writes one line to `.issues/work/ISS-042.events.jsonl`:
+
+```json
+{"at": "2026-09-08T11:04:02+06:00", "type": "lifecycle", "text": "worker started, 0 tool calls"}
+```
+
+`--type` is a free label — `probe`, `lifecycle`, `snapshot`, whatever the
+caller is recording — not a closed vocabulary. `--stdin` reads TEXT from
+standard input instead of the argument, so a probe's real stdout or another
+file's exact bytes go in without a shell-quoting problem:
+
+```bash
+some_probe_command | issue event ISS-042 --type probe --stdin
+issue event ISS-033 --type snapshot --stdin < .issues/work/ISS-033.md
+```
+
+Every write is a single append — no read, no rewrite of what is already
+there — so a process killed mid-write can corrupt at most the line it was
+writing, never an entry already on disk. That is the property a work plan
+does not have: this exists because a claim-race probe's stdout, an
+intentional kill's exact plan snapshot, and a killed worker's tool-call count
+were never durable, and a later cutoff erased the measurement while leaving
+the code intact (`docs/agent-behaviour-report.md`, ISS-036).
+
+`issue event ISS-042` with no TEXT prints the log back instead of appending to
+it — human-readable, or `--json` for the raw array. The file is plain JSON
+Lines either way, so `cat` or `jq` work directly on it.
+
 ## Checking the files
 
 The file format is the API, and its worst failure does not raise. A parser bug
@@ -552,6 +597,8 @@ is the doctor for that:
 | A blocker that is not here  | A missing id never blocks, so nothing has ever had a reason to mention the hole |
 | A status or priority nobody wrote | `issue next` drops an unknown status rather than raising, so the issue simply stops being offered |
 | A work plan with no issue   | The plan is named after the issue and has no identity of its own |
+| An event log with no issue  | Same as above, for `.events.jsonl` |
+| A line in an event log that will not parse | An append reads back silently otherwise, wherever it is read |
 
 Clean is exit 0 and no output. Anything found is exit 1, one line each on
 stderr — or on stdout as JSON under `--json`. A hand-edited `labels: auth,

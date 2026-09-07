@@ -31,6 +31,8 @@ import json
 import os
 import sys
 
+from cli_issue_tracker.events import SUFFIX as EVENTS_SUFFIX
+from cli_issue_tracker.events import bad_lines
 from cli_issue_tracker.fields import PRIORITIES
 from cli_issue_tracker.fields import STATUSES
 from cli_issue_tracker.fields import blockers_of
@@ -220,14 +222,22 @@ def check(as_json=False, plans=False):
                 (f"{id}.md", f"blocked_by names {', '.join(missing)}, which is not here")
             )
 
-    # A plan is named after its issue and has no identity of its own - no id
-    # of its own to allocate, no frontmatter - so an id with no file beside it
-    # means work is being recorded against nothing. Renaming an issue file by
-    # hand is how this happens, and the plan is the half that goes quiet.
+    # A plan or an event log is named after its issue and has no identity of
+    # its own - no id of its own to allocate, no frontmatter - so an id with
+    # no file beside it means work is being recorded against nothing.
+    # Renaming an issue file by hand is how this happens, and the plan or log
+    # is the half that goes quiet.
     work = work_dir()
     for name in sorted(os.listdir(work)) if os.path.isdir(work) else ():
-        if name.endswith(".md") and name[: -len(".md")] not in by_id:
-            findings.append((os.path.join(WORK, name), "a work plan with no issue beside it"))
+        if name.endswith(".md"):
+            if name[: -len(".md")] not in by_id:
+                findings.append((os.path.join(WORK, name), "a work plan with no issue beside it"))
+        elif name.endswith(EVENTS_SUFFIX):
+            id = name[: -len(EVENTS_SUFFIX)]
+            if id not in by_id:
+                findings.append((os.path.join(WORK, name), "an event log with no issue beside it"))
+            for number in bad_lines(os.path.join(work, name)):
+                findings.append((os.path.join(WORK, name), f"line {number} is not valid JSON"))
 
     if as_json:
         # Always the list, empty included: a script branching on whether the

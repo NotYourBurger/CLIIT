@@ -48,7 +48,9 @@ around them, and the body format: `split_sections`) → `fields.py` (reading one
 parsed issue, and the status/priority tuples) → `deps.py` (what blocks what) →
 `plan.py` (what a work plan is: the workflow rule, the seed, the reader, and
 `git_context`) → `validate.py` (every check that exits before a write) →
-`render.py` (every table, line and dict that gets printed). Plus
+`render.py` (every table, line and dict that gets printed). Plus, at the same
+layer as `plan.py` and built the same way on `storage.py` alone,
+`events.py` (the append-only run event log behind `issue event` - see below);
 `check.py` (`validate.py`'s contract pointed the other way - every check that
 runs over files already on disk, and the whole of `issue check`; a verb that
 holds none of the filtering, blocking or ordering opinions `issues.py` exists
@@ -58,7 +60,9 @@ the work plans are kept, exit 0 either way, and the threshold it feeds is
 written down in `docs/PRD/05-Work-Plan.md`. Its verdict column is
 `plan.untouched` — content, not git — because ISS-031's commit count measured
 whoever commits rather than whoever writes, and this workflow commits the plan
-edits at the end),
+edits at the end; it also flags an event log with no issue beside it and any
+line in one that will not parse as JSON, the same two questions it already
+asks of a work plan);
 `convert_id.py` (id allocation) and `init.py`, which imports `plan.rule_text`
 to write the workflow rule into `CLAUDE.md` / `AGENTS.md`.
 
@@ -133,6 +137,41 @@ written. The rules that are not obvious from the code:
   never block the write; the evidence rules already own completeness. The plan
   is never moved or archived — it stays in `work/` as the account of how the
   issue was built.
+
+`events.py` holds the third artifact: `.issues/work/ISS-NNN.events.jsonl`, an
+append-only log of what a running process observed about one issue - a
+probe's stdout, a coordinator's kill note, a lifecycle event - as opposed to
+what an agent decided, which stays in the plan. It exists because the
+agent-behaviour run (`docs/agent-behaviour-report.md`) found the plan and git
+carried implementation state across a hard stop but not the measurement
+protocol around it: a claim-race probe's stdout, an intentional kill's exact
+plan snapshot, and a killed worker's tool-call count were never durable, so a
+later cutoff erased them for good (ISS-036). `issue event` is wired straight
+in `cli.py`, the way `check` and `init` already are, because it shares none of
+`issues.py`'s filtering, blocking or ordering opinions. The rules that are not
+obvious from the code:
+
+- **One JSON object per line, never rewritten.** `append_event` only ever
+  opens the file in append mode - no read, no rewrite - so a process killed
+  mid-write can corrupt at most the line it was writing, never one already on
+  disk. This is why it is a second file next to the plan rather than a
+  section inside it: the plan is hand-edited prose and an append landing
+  mid-edit could not corrupt it if the two are never the same file.
+  `text` may itself be multi-line (a probe's real stdout, another file's
+  bytes via `--stdin`) because JSON already escapes the newlines within one
+  line - no second body parser like `split_sections` is needed.
+  `--type` is a free label, not a closed vocabulary - the reader tolerating
+  an unknown type is the same call `read_plan` makes about an unknown
+  heading.
+- **The reader never raises.** A missing log reads back as `[]`, the "absent
+  means absent" `read_plan` already uses for a missing section. A line that
+  will not parse is skipped by the reader and named by file and line number
+  in `issue check` instead - the same split `validate.py` and `check.py`
+  already have, one exits before a write and the other reports what is
+  already on disk.
+- **`issue event <ID>` with no TEXT reads the log back** instead of adding a
+  second command, the same call the work plan made about needing no dedicated
+  reader: the raw file is one `cat` away either way.
 
 ## Conventions this repo already holds to
 
