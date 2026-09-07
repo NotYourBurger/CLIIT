@@ -651,14 +651,15 @@ However:
 
 # Reopening Behavior
 
-Reopening must not make historical completion context disappear.
+Reopening must not leave an open issue claiming a current resolution. Historical
+completion context remains in git and is available through `issue log`.
 
 When a closed issue is reopened:
 
 * status becomes `open`
-* previous resolution information remains preserved
-* a future agent can see that the issue was previously considered resolved
-* closing it again creates a new resolution rather than silently rewriting historical reasoning
+* `reason`, `closed_at`, `message` and `evidence` are removed from the current file
+* a future agent can see the previous resolution through `issue log`
+* closing it again creates a fresh resolution
 
 The complete lifecycle may eventually become:
 

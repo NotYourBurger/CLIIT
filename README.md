@@ -345,7 +345,9 @@ the last one is a scheduler, not a tracker.
 is refused and names the command to use instead — a breaking change on purpose,
 because a second door into closing makes the evidence rule advisory, and an
 advisory rule is the one an agent in a hurry routes around. `set` keeps `open`
-and `in-progress`, so reopening stays where it is.
+and `in-progress`, so reopening stays where it is. Reopening clears `reason`,
+`closed_at`, `message` and `evidence`: an open issue has no current resolution,
+and the previous close remains available through `issue log`.
 
 Every close takes exactly one reason and a `--message` that is not blank and is
 one line:

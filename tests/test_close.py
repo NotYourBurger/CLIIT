@@ -192,17 +192,21 @@ def demo():
             _, said, _ = run(close_issue, "ISS-005", not_planned=True, message="Dropping it.")
             assert "ISS-006 is now ready" in said, said
 
-            # Reopening keeps the resolution - set_fields writes the fields it
-            # was asked for and nothing else - and closing again replaces it
-            # rather than appending. The previous one is in git, which is where
-            # this project keeps history.
+            # Reopening drops the resolution it no longer has. The previous
+            # one is in git, which is where this project keeps history, and a
+            # second close writes a fresh resolution rather than reviving it.
             run(set_fields, ["ISS-001", "open"])
             reopened = read(tmp, "ISS-001")
             assert reopened["status"] == "open"
-            assert reopened["reason"] == "completed", "history must survive a reopen"
+            assert not {"reason", "closed_at", "message", "evidence"} & set(reopened)
+            _, out, _ = run(view_issue, "ISS-001")
+            assert "Resolution" not in out, out
+            _, out, _ = run(view_issue, "ISS-001", as_json=True)
+            assert "resolution" not in json.loads(out)
             run(close_issue, "ISS-001", not_planned=True, message="Actually, no.")
             again = read(tmp, "ISS-001")
             assert again["reason"] == "not-planned"
+            assert again["message"] == "Actually, no."
             assert "evidence" not in again, "a new reason must not keep the old proof"
 
             # The second door is shut: `set` refuses the word and names the
@@ -229,6 +233,10 @@ def demo():
             _, out, _ = run(view_issue, "ISS-006", as_json=True)
             assert "resolution" not in json.loads(out)
             assert run(list_issues, "closed")[0] is None
+            run(set_fields, ["ISS-006", "open"])
+            legacy = read(tmp, "ISS-006")
+            assert legacy["status"] == "open"
+            assert not {"reason", "closed_at", "message", "evidence"} & set(legacy)
 
             # A hand-edited evidence line that is not JSON is ignored, loudly,
             # rather than taking `view` down or being written back wrong.

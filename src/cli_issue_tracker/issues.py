@@ -903,6 +903,13 @@ def set_fields(
             if not quiet:
                 print(f"Issue {id} is already {describe(wanted)}")
         else:
+            if status is not None and issue.get("status") == "closed":
+                # A reopened issue has no current resolution. The previous one
+                # remains in git, just as it does when `close` replaces a
+                # resolution; retaining it here would make the file claim that
+                # open work is already resolved.
+                for field in ("reason", "closed_at", "message", "evidence"):
+                    issue.pop(field, None)
             for field, value in changed.items():
                 # Empty means gone: the last label removed takes the field with
                 # it, rather than leaving "labels:" behind on the file.
