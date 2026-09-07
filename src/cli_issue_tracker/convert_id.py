@@ -12,6 +12,10 @@ def next_id(issues_dir: str) -> str:
     plan is named after the issue it belongs to and allocates nothing."""
     prefix = id_prefix()
     nums = []
+    # ponytail: this directory scan sees one worktree, so concurrent worktrees
+    # can allocate the same id. Git makes that collision loud as add/add and
+    # `issue check` catches renamed residue; if allocation itself must prevent
+    # it, replace this with a shared atomic counter outside the worktrees.
     for name in os.listdir(issues_dir):
         stem, ext = os.path.splitext(name)
         head, _, num = stem.partition("-")

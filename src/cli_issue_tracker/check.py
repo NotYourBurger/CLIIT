@@ -170,7 +170,7 @@ def check(as_json=False, plans=False):
 
     path = require_issue_dir()
 
-    findings, by_id = [], {}
+    findings, by_id, file_by_id = [], {}, {}
     for name in sorted(os.listdir(path)):
         if not name.endswith(".md"):
             continue
@@ -185,6 +185,13 @@ def check(as_json=False, plans=False):
             )
         issue = parse_issue(file_path)
         if issue is not None:
+            id = issue["id"]
+            if id in file_by_id:
+                findings.append(
+                    (name, f"duplicate id {id} is also used by {file_by_id[id]}")
+                )
+            else:
+                file_by_id[id] = name
             by_id[issue["id"]] = issue
 
     # One pass per issue, so everything wrong with one file prints together.

@@ -548,6 +548,7 @@ is the doctor for that:
 | Finding             | Why it is silent otherwise                                    |
 | ------------------- | ------------------------------------------------------------- |
 | Would not survive a rewrite | Read, written back, compared byte for byte — the only failure class that loses text |
+| A duplicate id across files | The id map keeps only one file, hiding the other from commands and blocker lookups |
 | A blocker that is not here  | A missing id never blocks, so nothing has ever had a reason to mention the hole |
 | A status or priority nobody wrote | `issue next` drops an unknown status rather than raising, so the issue simply stops being offered |
 | A work plan with no issue   | The plan is named after the issue and has no identity of its own |
@@ -683,6 +684,7 @@ file per thing that can break:
 | `test_close.py`      | closing: the reasons, the evidence rule, and what it refuses |
 | `test_plan.py`       | seeding, resuming, the blocked refusal, and a mangled plan  |
 | `test_check.py`      | `issue check`, against files the tool did not write, and the real `.issues/` |
+| `test_convert_id.py` | id allocation, including independent prefix sequences         |
 | `test_encoding.py`   | that nothing reads or writes text at the platform default   |
 
 No framework: each file is a script with a `demo()` that asserts and prints

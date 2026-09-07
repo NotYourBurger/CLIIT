@@ -58,6 +58,18 @@ priority: urgent
 """
 
 
+def issue_text(id, title):
+    """A valid, rewrite-stable issue for identity checks."""
+    return f"""---
+id: {id}
+status: open
+created_at: x
+---
+
+# {title}
+"""
+
+
 # A plan with three checkpoints, one of them done. The ticked count needs no
 # git, so it is the one column asserted whether or not there is a repo.
 SEEDED = """# ISS-901 Work Plan
@@ -130,6 +142,32 @@ if __name__ == "__main__":
             #    something is a doctor nobody runs.
             code, out, err = run(check)
             assert code is None and out == "" and err == "", (code, out, err)
+
+            # Two files can keep the same frontmatter id after an add/add
+            # conflict is resolved by renaming one. The id map can only keep
+            # one of them, so the finding must name both files before one
+            # silently overwrites the other.
+            duplicate_names = ("first-copy.md", "second-copy.md")
+            write(duplicate_names[0], issue_text("ISS-900", "First copy"), where=issues)
+            write(duplicate_names[1], issue_text("ISS-900", "Second copy"), where=issues)
+
+            # Prefixes are independent id spaces. Sharing the numeric suffix
+            # is expected and must not be mistaken for the collision above.
+            independent_names = ("BUG-800.md", "ISS-800.md")
+            write(independent_names[0], issue_text("BUG-800", "A bug"), where=issues)
+            write(independent_names[1], issue_text("ISS-800", "An issue"), where=issues)
+
+            code, out, err = run(check)
+            assert code == 1 and out == "", (code, out, err)
+            assert "ISS-900" in err and "duplicate" in err, err
+            assert all(name in err for name in duplicate_names), err
+            assert all(name not in err for name in independent_names), err
+
+            # The cases below deliberately accumulate findings, so restore
+            # their clean starting point after this self-contained identity
+            # check.
+            for name in duplicate_names + independent_names:
+                os.remove(os.path.join(issues, name))
 
             # 2. The round trip: the failure class that corrupts silently.
             write("ISS-901.md", WRITTEN_TWICE, where=issues)
