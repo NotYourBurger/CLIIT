@@ -30,6 +30,7 @@ issue brief                         # what is happening in this project
 issue brief --json                  # the same orientation, for an agent
 issue next                          # the one issue to work on now
 issue next --json                   # the same decision, for an agent
+issue next --claim                  # ...and take it, retrying if the claim is lost
 issue search "verification email"   # every issue whose body or title has both words
 issue search auth --status open -p high   # the same filters list takes, ANDed with the query
 issue view ISS-001                  # render the issue as formatted Markdown
@@ -168,9 +169,23 @@ nothing to work on it prints nothing on stdout and exits 1, `search`'s
 contract: a lookup that found nothing failed, unlike a filter that matched
 nothing.
 
-It is read-only. It does not claim the issue, does not set `in-progress` and
-writes no file — asking what to do next should not decide it for you, and that
-is also what makes it safe to ask twice. `issue claim` is one call away.
+It is read-only by default. It does not claim the issue, does not set
+`in-progress` and writes no file — asking what to do next should not decide it
+for you, and that is also what makes it safe to ask twice.
+
+`issue next --claim` is the version that decides, and it is a flag precisely so
+the default stays a question. The ownership filter above narrows the window
+between two agents asking; it cannot close it, because reading is not taking.
+`--claim` closes it the way `issue claim` does — write the assignee, read the
+file back, and exactly one caller sees its own name — and the loser then walks
+to the next candidate rather than exiting. That retry is the whole point: an
+agent that asked for something it could start is owed a row, and a `--claim`
+that gave up on the first collision would be worth no more than the plain
+`next` it replaced. N agents calling it under N names come away with N distinct
+ids. When every candidate is lost in the race it exits 1 with
+`Nothing to claim - N candidate(s) were taken while trying`, and with no
+`$ISSUE_USER` and no `git config user.name` it refuses before writing anything,
+rather than putting an owner in the file that nobody can be held to.
 
 `issue brief` answers the question before that one: *what is going on here at
 all*. It used to cost five calls — `list`, `list --ready`, `list --blocked`,

@@ -58,8 +58,10 @@ def list_projects(
 @app.command("next")
 def next_up(
     as_json: bool = typer.Option(False, "--json", help="Print the issue as JSON"),
+    # Opt-in, so asking what to do next never decides it for you.
+    claim: bool = typer.Option(False, "--claim", help="Take the issue, and retry if the claim is lost"),
 ):
-    next_issue(as_json)
+    next_issue(as_json, claim)
 
 
 # The verb after `next`: `next` names the issue, `start` opens it. Also the

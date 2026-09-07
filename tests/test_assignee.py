@@ -2,7 +2,9 @@
 
 The branches worth checking are the ones the other fields do not have: claim
 is the only write with a precondition, so it has three ways to fail and one
-way to succeed twice; the two filters contradict each other; and the ASSIGNEE
+way to succeed twice; `try_claim` under it is the write that closes the race,
+so the two things it must never do - overwrite an owner it read a moment ago,
+and believe its own write - are staged here rather than left to luck; the two filters contradict each other; and the ASSIGNEE
 column has to disappear on a repo that owns nothing.
 
 Run: uv run python tests/test_assignee.py
@@ -14,15 +16,19 @@ import tempfile
 
 from helpers import close
 from helpers import run
+from cli_issue_tracker import issues
 from cli_issue_tracker.issues import (
     claim_issue,
     create_issue,
     current_user,
     list_issues,
     set_fields,
+    try_claim,
     view_issue,
 )
 from cli_issue_tracker.storage import parse_issue
+
+real_set_fields = issues.set_fields
 
 
 def read(tmp, id):
@@ -90,6 +96,38 @@ def demo():
             run(set_fields, ["ISS-002"], None, (), (), ["ISS-001"])
             assert run(claim_issue, "ISS-002")[0] is None
             assert read(tmp, "ISS-002")["assignee"] == "tahmid"
+
+            # try_claim never takes an issue somebody else already owns, and
+            # never touches the file to find that out. `claim` checks first and
+            # `next --claim` filters first, so nothing reaches here with a
+            # foreign owner today - which is exactly why it is staged: without
+            # this check the write would overwrite that owner and the read-back
+            # would then confirm the theft.
+            run(set_fields, ["ISS-001"], None, (), (), (), (), "codex-1")
+            before = read(tmp, "ISS-001")
+            assert try_claim("ISS-001", "tahmid") is False
+            assert read(tmp, "ISS-001") == before
+
+            # ...and it believes the file rather than its own write. Staged by
+            # standing in for the write with one that loses the race, because
+            # two processes interleaving is not a thing one script can arrange:
+            # whatever try_claim asked for, the name in the file is the answer.
+            run(set_fields, ["ISS-001"], None, (), (), (), (), "")
+            issues.set_fields = lambda ids, *a, **kw: real_set_fields(
+                ids, *a, **{**kw, "assignee": "codex-1"}
+            )
+            try:
+                assert try_claim("ISS-001", "tahmid") is False
+            finally:
+                issues.set_fields = real_set_fields
+            assert read(tmp, "ISS-001")["assignee"] == "codex-1"
+
+            # The same call succeeds once the file agrees, so the two checks
+            # above are refusing for the reason claimed and not just refusing.
+            run(set_fields, ["ISS-001"], None, (), (), (), (), "")
+            assert try_claim("ISS-001", "tahmid") is True
+            assert read(tmp, "ISS-001")["assignee"] == "tahmid"
+            run(set_fields, ["ISS-001"], None, (), (), (), (), "")
 
             # Filters AND with everything else, and contradict each other.
             _, owned, _ = run(list_issues, None, None, (), False, False, False, "tahmid")

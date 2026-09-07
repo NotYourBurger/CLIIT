@@ -5,7 +5,11 @@ checks: every term of next_rank in isolation, in-progress ahead of a
 higher-priority open issue, a blocked issue never selected in either status,
 and the empty backlog exiting 1 with nothing on stdout. Plus the ownership
 filter, which is the second guarantee: two agents must not be handed the same
-id, and the determinism above is what would otherwise ensure they are.
+id, and the determinism above is what would otherwise ensure they are. Then
+--claim, which is that guarantee made a write: N callers under N names must
+come away with N distinct ids, and plain `next` must still write nothing -
+asserted rather than assumed, because it is the contract the flag exists to
+preserve.
 
 Run: uv run python tests/test_next.py
 """
@@ -21,6 +25,7 @@ from cli_issue_tracker.issues import create_issue, next_issue, set_fields
 from cli_issue_tracker.storage import parse_issue, write_issue
 
 real_user = issues.current_user
+real_try_claim = issues.try_claim
 
 
 def filed_at(tmp, id, created_at):
@@ -166,6 +171,76 @@ def demo():
             issues.current_user = lambda: ""
             try:
                 assert picked() == "ISS-008"
+            finally:
+                issues.current_user = real_user
+
+            # --claim. Three fresh unassigned issues, and the id order is the
+            # rank order again, so a moved pick is the claim moving it.
+            for n in range(9, 12):
+                run(create_issue, f"Issue {n}", "...", "medium")
+            close("ISS-008")
+
+            os.environ["ISSUE_USER"] = "one"
+            assert picked(claim=True) == "ISS-009"
+            # The write happened, and --json says so rather than reporting the
+            # issue as it was read a moment before it was taken.
+            assert parse_issue(os.path.join(tmp, "ISS-009.md"))["assignee"] == "one"
+
+            # A second caller under another name gets the next issue, not an
+            # error: losing a row you asked for walks on, it does not exit.
+            os.environ["ISSUE_USER"] = "two"
+            _, out, _ = run(next_issue, as_json=True, claim=True)
+            taken = json.loads(out)
+            assert taken["id"] == "ISS-010" and taken["assignee"] == "two", taken
+
+            # N calls under N names, N distinct ids - the whole point.
+            os.environ["ISSUE_USER"] = "three"
+            assert picked(claim=True) == "ISS-011"
+            assert sorted(
+                parse_issue(os.path.join(tmp, f"ISS-{n}.md"))["assignee"] for n in ("009", "010", "011")
+            ) == ["one", "three", "two"]
+
+            # Candidates exhausted is exit 1 with empty stdout, and its own
+            # sentence - the backlog is fine, this caller was outrun.
+            os.environ["ISSUE_USER"] = "four"
+            code, out, err = run(next_issue, claim=True)
+            assert code == 1 and out == "", (code, out)
+            assert "assigned to someone else" in err, err
+
+            # Every candidate lost in the race: exit 1 with its own sentence,
+            # having walked all of them rather than stopping at the first. Only
+            # a stub can stage this - two real processes interleaving between
+            # try_claim's write and its read-back is not a thing a script can
+            # arrange.
+            os.environ["ISSUE_USER"] = "five"
+            run(create_issue, "Issue 12", "...", "medium")
+            run(create_issue, "Issue 13", "...", "medium")
+            tried = []
+            issues.try_claim = lambda id, who: tried.append(id) or False
+            try:
+                code, out, err = run(next_issue, claim=True)
+                assert code == 1 and out == "", (code, out)
+                assert "2 candidate(s) were taken while trying" in err, err
+                assert tried == ["ISS-012", "ISS-013"], tried
+            finally:
+                issues.try_claim = real_try_claim
+
+            # Plain `next` still writes nothing, asserted on the file that
+            # --claim would have written to.
+            os.environ["ISSUE_USER"] = "one"
+            before = parse_issue(os.path.join(tmp, "ISS-009.md"))
+            run(next_issue)
+            run(next_issue, as_json=True)
+            assert parse_issue(os.path.join(tmp, "ISS-009.md")) == before
+
+            # --claim with nobody to claim as refuses before touching a file,
+            # rather than writing an owner nobody can be held to.
+            os.environ.pop("ISSUE_USER")
+            issues.current_user = lambda: ""
+            try:
+                code, out, err = run(next_issue, claim=True)
+                assert code == 1 and out == "" and "No name to claim as" in err, (code, out, err)
+                assert parse_issue(os.path.join(tmp, "ISS-009.md")) == before
             finally:
                 issues.current_user = real_user
         finally:

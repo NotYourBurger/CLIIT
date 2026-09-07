@@ -326,15 +326,23 @@ def ranked_actionable(issues, by_id):
     return sorted((issue for issue in issues if actionable(issue, by_id)), key=next_rank)
 
 
-def next_issue(as_json=False):
+def next_issue(as_json=False, claim=False):
     """The one issue to work on now, and nothing else - `issue list --ready`
     hands back a table and leaves the last step to the caller, which for an
     agent is a backlog scan and a paragraph of reasoning to re-derive a
     decision that was already deterministic.
 
-    Read-only on purpose: it does not claim, assign or set in-progress. Asking
+    Read-only by default: it does not claim, assign or set in-progress. Asking
     the question should not answer it, and that is also what makes it cheap to
-    ask twice."""
+    ask twice - so `--claim` is opt-in and never the default.
+
+    With it, the answer is taken rather than read. The ownership filter below
+    narrows the window between two agents asking; it cannot close it, because
+    reading is not taking. `try_claim` closes it by reading the file back, and
+    the loser walks to the next candidate rather than exiting: an agent that
+    asked for a row it could start is owed one, and a `--claim` that gives up
+    on the first collision is worth no more than the plain `next` it
+    replaced."""
     issues, by_id = select_issues()
     candidates = ranked_actionable(issues, by_id)
 
@@ -354,6 +362,15 @@ def next_issue(as_json=False):
     who = current_user()
     mine = [issue for issue in candidates if claimable_by(issue, who)] if who else candidates
 
+    if claim and not who:
+        # `claim`'s refusal, for `claim`'s reason: rather than writing an owner
+        # nobody can be held to. Before the walk, so it cannot half-succeed.
+        print(
+            "No name to claim as - set $ISSUE_USER or git config user.name",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     if not mine:
         # Nothing on stdout in either mode, and exit 1: a parser gets a clean
         # EOF instead of a prose apology, and a script gets the branch it
@@ -371,6 +388,23 @@ def next_issue(as_json=False):
         sys.exit(1)
 
     issue = mine[0]
+    if claim:
+        for candidate in mine:
+            if try_claim(candidate["id"], who):
+                # Re-read rather than patch the dict in memory: --json prints
+                # the issue as it now is on disk, and the file is the record.
+                issue = read_issue(candidate["id"]) or candidate
+                break
+        else:
+            # Every candidate went to somebody else between the listing and the
+            # write. Exit 1 like every other lookup that found nothing, and a
+            # different sentence from the two above - nothing is wrong with the
+            # backlog, the caller was simply outrun.
+            print(
+                f"Nothing to claim - {len(mine)} candidate(s) were taken while trying",
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
     # The plan is where the work stands and git is what actually changed - the
     # two halves that used to live in a conversation. Read here rather than in
@@ -1036,6 +1070,35 @@ def close_issue(
             print(f"{other['id']} is now ready")
 
 
+def try_claim(id, who):
+    """Take one issue for `who`, or say it did not happen. Silent and without
+    exit codes, because it has two callers who report differently: `claim` was
+    asked about this one id and has a sentence for every way it can fail, and
+    `next --claim` was asked for a row and answers a lost claim by trying the
+    next one.
+
+    Every precondition is rechecked here rather than trusted from the caller -
+    a bool that is only correct when the caller looked first is a bool with a
+    footgun in it, and the read is one file.
+    """
+    issue = read_issue(id)
+    if issue is None or issue["status"] == "closed" or not claimable_by(issue, who):
+        return False
+
+    set_fields([id], assignee=who, quiet=True)
+
+    # Check-then-write is not atomic and there is no lock to take. Read the
+    # file back: whichever order two writes land in, exactly one caller reads
+    # its own name back, so exactly one is told it succeeded and the other goes
+    # and picks the next row instead of starting the same work.
+    #
+    # ponytail: this closes the window, it does not remove it - a reader
+    # interleaved between another writer's two operations can still be told the
+    # wrong thing, and the fix if it ever matters is an O_EXCL claim file, not
+    # a lock.
+    return (read_issue(id) or {}).get("assignee") == who
+
+
 def claim_issue(id, by=None):
     """The one ownership verb that can fail. `assign` and `release` are
     spellings of `set --assignee` and win by definition; `claim` is a write
@@ -1070,20 +1133,11 @@ def claim_issue(id, by=None):
         print(f"{id} is already {issue['assignee']}'s", file=sys.stderr)
         sys.exit(1)
 
-    set_fields([id], assignee=who, quiet=True)
-
-    # Check-then-write is not atomic and there is no lock to take. Read the
-    # file back: whichever order two writes land in, exactly one caller reads
-    # its own name back, so exactly one is told it succeeded and the other goes
-    # and picks the next row instead of starting the same work.
-    #
-    # ponytail: this closes the window, it does not remove it - a reader
-    # interleaved between another writer's two operations can still be told the
-    # wrong thing, and the fix if it ever matters is an O_EXCL claim file, not
-    # a lock.
-    landed = (read_issue(id) or {}).get("assignee")
-    if landed != who:
-        print(f"{id} is already {landed}'s", file=sys.stderr)
+    if not try_claim(id, who):
+        # The checks above passed and the claim still did not land, which is
+        # the race itself: name the owner it landed on, the same sentence as
+        # losing it before the write.
+        print(f"{id} is already {(read_issue(id) or {}).get('assignee')}'s", file=sys.stderr)
         sys.exit(1)
 
     print(f"{id} is now {who}'s")
