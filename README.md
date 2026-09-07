@@ -47,6 +47,8 @@ issue claim ISS-021                 # mine, if nobody else got there first
 issue claim ISS-021 --by codex-1    # --by defaults to $ISSUE_USER, then git config user.name
 issue assign ISS-021 --to codex-1   # hand it over, no questions
 issue release ISS-021               # not mine any more
+issue check                         # everything wrong with the files, or nothing at all
+issue check --json                  # the same findings, for an agent
 issue log ISS-001                   # the issue's git history: who changed it, when, why
 issue start ISS-042                 # open the work, or pick it back up where it stopped
 issue start ISS-042 --anyway        # start it even though something blocks it
@@ -510,6 +512,26 @@ writes the nine-line workflow rule into `CLAUDE.md` or `AGENTS.md`, and every
 seeded plan repeats the four lines that matter mid-session as an HTML comment
 at the top of the file. Both come from one constant in the source.
 
+## Checking the files
+
+The file format is the API, and its worst failure does not raise. A parser bug
+returns a plausible dict that `issue set` then writes back over your prose, and
+the first person to notice is reading a mangled issue weeks later. `issue check`
+is the doctor for that:
+
+| Finding             | Why it is silent otherwise                                    |
+| ------------------- | ------------------------------------------------------------- |
+| Would not survive a rewrite | Read, written back, compared byte for byte — the only failure class that loses text |
+| A blocker that is not here  | A missing id never blocks, so nothing has ever had a reason to mention the hole |
+| A status or priority nobody wrote | `issue next` drops an unknown status rather than raising, so the issue simply stops being offered |
+| A work plan with no issue   | The plan is named after the issue and has no identity of its own |
+
+Clean is exit 0 and no output. Anything found is exit 1, one line each on
+stderr — or on stdout as JSON under `--json`. A hand-edited `labels: auth,
+sessions` is deliberately not checked: after the split it is indistinguishable
+from two labels, so it is undetectable by construction, and a check that
+pretends otherwise is worse than none.
+
 ## File format
 
 Each issue is one Markdown file with YAML-style frontmatter:
@@ -554,6 +576,7 @@ thing with its own identity. See [Work plans](#work-plans).
 | `deps.py`       | what blocks what                                       |
 | `plan.py`       | what a work plan is: the rule, the seed, the reader    |
 | `validate.py`   | the checks that run before anything is written         |
+| `check.py`      | the checks that run over what is already written       |
 | `render.py`     | how output looks, human and `--json`                   |
 | `storage.py`    | finding `.issues/`, and the file format                 |
 | `convert_id.py` | allocating the next id                                 |
@@ -569,7 +592,7 @@ rather than looking like nothing changed.
 ## Status
 
 Working: `init`, `create`, `list`, `brief`, `next`, `search`, `view`, `set`,
-`close`, `claim`, `assign`, `release`, `log`, `start`.
+`close`, `claim`, `assign`, `release`, `log`, `start`, `check`.
 
 Run every check with `uv run python tests/all.py`. They live in `tests/`, one
 file per thing that can break:
@@ -586,6 +609,7 @@ file per thing that can break:
 | `test_next.py`       | the `next` ranking, every tie-breaker, ownership, empty case |
 | `test_close.py`      | closing: the reasons, the evidence rule, and what it refuses |
 | `test_plan.py`       | seeding, resuming, the blocked refusal, and a mangled plan  |
+| `test_check.py`      | `issue check`, against files the tool did not write, and the real `.issues/` |
 | `test_encoding.py`   | that nothing reads or writes text at the locale default     |
 
 No framework: each file is a script with a `demo()` that asserts and prints

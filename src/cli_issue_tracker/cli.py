@@ -10,6 +10,7 @@ from cli_issue_tracker.issues import set_fields
 from cli_issue_tracker.issues import close_issue
 from cli_issue_tracker.issues import log_issue
 from cli_issue_tracker.issues import claim_issue
+from cli_issue_tracker.check import check
 from cli_issue_tracker.init import init
 import sys
 app = typer.Typer()
@@ -158,6 +159,16 @@ def assign(id: str, to: str = typer.Option(..., "--to", help="Hand it over, no q
 @app.command("release")
 def release(id: str):
     set_fields([id], assignee="")
+
+# Straight from check.py rather than through issues.py: `init` is the
+# precedent. A verb that shares none of the filtering, blocking or ordering
+# opinions issues.py exists to hold has no reason to be routed through it.
+@app.command("check")
+def check_files(
+    as_json: bool = typer.Option(False, "--json", help="Print the findings as JSON"),
+):
+    check(as_json)
+
 
 @app.command("log")
 def log(id):

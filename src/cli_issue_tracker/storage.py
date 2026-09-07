@@ -4,6 +4,12 @@ from datetime import datetime
 
 ISSUES_DIR = ".issues"
 
+# The keys that keep their documented order at the top of every file; anything
+# a human added follows. One copy, because `check` compares a file against what
+# `write_issue` would produce, and a second copy of this tuple is a false
+# finding on every issue in the repo the day one of them is edited.
+FIELD_ORDER = ("id", "status", "created_at", "updated_at")
+
 def id_prefix() -> str:
     """The letters in front of every id. One source, read by next_id when it
     allocates and by nothing else - list, view, set and log all work off the
@@ -137,7 +143,7 @@ def write_issue(issue: dict) -> str:
     # "title" is derived from the body heading, not a frontmatter field, so it
     # is not written back.
     fields = {key: value for key, value in issue.items() if key not in ("title", "body")}
-    content = join_file(fields, issue["body"], first=("id", "status", "created_at", "updated_at"))
+    content = join_file(fields, issue["body"], first=FIELD_ORDER)
 
     file_path = os.path.join(path, f"{issue['id']}.md")
     with open(file_path, "w", encoding="utf-8") as md_file:

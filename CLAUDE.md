@@ -49,6 +49,10 @@ parsed issue, and the status/priority tuples) → `deps.py` (what blocks what) �
 `plan.py` (what a work plan is: the workflow rule, the seed, the reader, and
 `git_context`) → `validate.py` (every check that exits before a write) →
 `render.py` (every table, line and dict that gets printed). Plus
+`check.py` (`validate.py`'s contract pointed the other way - every check that
+runs over files already on disk, and the whole of `issue check`; a verb that
+holds none of the filtering, blocking or ordering opinions `issues.py` exists
+for, so `cli.py` calls it directly the way it already calls `init`),
 `convert_id.py` (id allocation) and `init.py`, which imports `plan.rule_text`
 to write the workflow rule into `CLAUDE.md` / `AGENTS.md`.
 
