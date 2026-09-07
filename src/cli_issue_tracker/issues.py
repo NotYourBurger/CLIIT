@@ -35,6 +35,13 @@ from cli_issue_tracker.deps import cycle_from
 from cli_issue_tracker.deps import in_the_way
 from cli_issue_tracker.deps import is_ready
 from cli_issue_tracker.deps import said_blockers
+from cli_issue_tracker.validate import clean_ids
+from cli_issue_tracker.validate import clean_labels
+from cli_issue_tracker.validate import clean_set
+from cli_issue_tracker.validate import require_blockers
+from cli_issue_tracker.validate import require_commits
+from cli_issue_tracker.validate import require_priority
+from cli_issue_tracker.validate import require_status
 from cli_issue_tracker.storage import require_issue_dir
 from cli_issue_tracker.storage import now
 from cli_issue_tracker.storage import parse_issue
@@ -71,78 +78,6 @@ def create_issue(title: str, description: str, priority: str = "medium", labels=
     }
     write_issue(issue)
     print(f"Issue {issue['id']} has been created")
-
-
-def clean_set(words, kind, clean=lambda word: word):
-    """User words in, storable values out: stripped, deduped and sorted, each
-    one through `clean`. Sorted because the file is read by humans and diffed
-    by git, and an insertion-ordered list reorders itself for no reason.
-
-    A comma is the delimiter, so no value can contain one - that is the whole
-    shared validation. What a value may be beyond that differs per field, which
-    is why the per-value check is a parameter rather than hard-coded in the
-    middle: a label is invented, an id has to exist."""
-    values = set()
-    for word in words:
-        value = clean(word.strip())
-        if not value:
-            print(f"A {kind} cannot be empty", file=sys.stderr)
-            sys.exit(1)
-        if "," in value:
-            print(
-                f"A {kind} cannot contain a comma - {word!r} is the separator "
-                f"between two, so pass them as two flags",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        values.add(value)
-    return sorted(values)
-
-
-def clean_labels(words):
-    """Lowercased, because a label is a word and not an identity. Unlike status
-    and priority there is no list to check against: inventing the words is the
-    point of labels."""
-    return clean_set(words, "label", str.lower)
-
-
-def clean_ids(words):
-    """Ids keep their case - the prefix is configurable, so there is no
-    normalisation that is right for every repo. Whether the id exists is
-    checked where the issues are in hand, not here."""
-    return clean_set(words, "issue id")
-
-
-def require_blockers(ids, block, unblock, by_id):
-    """Pass, or exit 1 saying why - before anything is written. An unknown id,
-    a self-link or a cycle is a failed command, not a half-applied one.
-
-    Existence is required of --blocked-by and not of --unblock: a blocker whose
-    file was deleted is exactly the one you need to be able to remove."""
-    for id in block:
-        if id not in by_id:
-            print(f"Issue {id} Was Not Found", file=sys.stderr)
-            sys.exit(1)
-    for id in ids:
-        if id in block:
-            print(f"{id} cannot block itself", file=sys.stderr)
-            sys.exit(1)
-
-    # The graph as it would be after the write: a cycle is cheapest to catch
-    # here, while it is still one edge away from valid. Left in, neither issue
-    # is ever ready and nothing ever says why - `--ready` just quietly returns
-    # one row short forever.
-    graph = {id: blockers_of(issue) for id, issue in by_id.items()}
-    for id in ids:
-        if id in graph:
-            graph[id] = sorted((set(graph[id]) | set(block)) - set(unblock))
-    for id in ids:
-        path = cycle_from(id, graph)
-        if path:
-            # The path, not "cycle detected": it says which edge to drop
-            # instead of sending you off to read four files.
-            print(f"{id} would wait on itself: {' -> '.join(path)}", file=sys.stderr)
-            sys.exit(1)
 
 
 def rank(issue):
@@ -212,25 +147,6 @@ def describe(fields):
         else:
             said.append(f"{field} {value}")
     return ", ".join(said)
-
-
-def require_status(status):
-    """Pass, or exit 1 saying why. Shared by list (filtering) and set (writing)
-    so there is one list and one message, not two that drift apart. Same
-    contract as require_issue_dir - a word we cannot act on is a failed
-    command, not a quiet one."""
-    if status not in STATUSES:
-        print(f"Unknown status {status!r} - use: {', '.join(STATUSES)}", file=sys.stderr)
-        sys.exit(1)
-
-
-def require_priority(priority):
-    """The same contract as require_status, for the other three-word list. Two
-    near-identical validators beat one parameterised one for lists this short -
-    fold them together when there is a third."""
-    if priority not in PRIORITIES:
-        print(f"Unknown priority {priority!r} - use: {', '.join(PRIORITIES)}", file=sys.stderr)
-        sys.exit(1)
 
 
 # name, value, and what "nothing here" looks like. A column with a blank is
@@ -1007,34 +923,6 @@ def set_fields(
     # ran to the end first.
     if missing:
         sys.exit(1)
-
-
-def require_commits(shas):
-    """Every --commit names a commit in this repository, or exit 1 before the
-    write. Local only, and skipped entirely when there is no repo - the
-    evidence is still worth recording, and network access must never be on the
-    path to closing an issue. `git cat-file -e` answers 128 for both "no repo"
-    and "no such object", so the repo test comes first; that is also how
-    log_issue treats git having nothing to say."""
-    if not shas:
-        return
-    repo = subprocess.run(
-        ["git", "rev-parse", "--git-dir"], capture_output=True, text=True, encoding="utf-8"
-    )
-    if repo.returncode:
-        return
-    for sha in shas:
-        # ^{commit} so a tree or a blob that happens to share the prefix is not
-        # accepted as the implementation.
-        found = subprocess.run(
-            ["git", "cat-file", "-e", f"{sha}^{{commit}}"],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-        )
-        if found.returncode:
-            print(f"No commit {sha} in this repository", file=sys.stderr)
-            sys.exit(1)
 
 
 def close_issue(
