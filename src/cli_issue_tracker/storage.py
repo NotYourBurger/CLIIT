@@ -57,8 +57,13 @@ def require_issue_dir() -> str:
         sys.exit(1)
     return path
 
-def parse_issue(file_path: str) -> dict | None:
-    """Read one issue file back into a dict. Returns None if it isn't a valid issue."""
+def split_file(file_path: str) -> tuple[dict, str] | None:
+    """One frontmatter file as (fields, body), or None if it has no frontmatter.
+
+    This is the file format with nothing issue-shaped left in it: parse_issue is
+    this plus its required keys, and a handover is this plus its own. Written
+    out because a second frontmatter reader beside the first is how the two
+    start disagreeing about what a `---` means."""
     with open(file_path, "r", encoding="utf-8") as file:
         lines = file.read().splitlines()
 
@@ -72,16 +77,42 @@ def parse_issue(file_path: str) -> dict | None:
     except ValueError:
         return None
 
-    issue = {}
+    fields = {}
     for line in lines[1:fence]:
         key, _, value = line.partition(":")
-        issue[key.strip()] = value.strip()
+        fields[key.strip()] = value.strip()
+    return fields, "\n".join(lines[fence + 1 :]).strip()
+
+
+def join_file(fields: dict, body: str, first=()) -> str:
+    """The exact inverse of split_file. Change one and you must change the
+    other, which is why they live together.
+
+    `first` is the handful of keys that keep their documented order at the top;
+    anything else a human added to the file follows, rather than being dropped
+    or reshuffled on the next rewrite."""
+    ordered = [f"{key}: {fields[key]}" for key in first if key in fields]
+    ordered += [f"{key}: {value}" for key, value in fields.items() if key not in first]
+    frontmatter = "\n".join(ordered)
+    return f"""---
+{frontmatter}
+---
+
+{body}
+"""
+
+
+def parse_issue(file_path: str) -> dict | None:
+    """Read one issue file back into a dict. Returns None if it isn't a valid issue."""
+    split = split_file(file_path)
+    if split is None:
+        return None
+    issue, body = split
 
     # body is the file minus the frontmatter, verbatim - that is what the viewer
     # shows. title is pulled out separately because the list needs it as a column.
-    body = lines[fence + 1 :]
-    issue["body"] = "\n".join(body).strip()
-    for i, line in enumerate(body):
+    issue["body"] = body
+    for line in body.splitlines():
         if line.startswith("# "):
             issue["title"] = line[2:].strip()
             break
@@ -93,6 +124,7 @@ def parse_issue(file_path: str) -> dict | None:
         return None
     return issue
 
+
 def write_issue(issue: dict) -> str:
     """Write an issue dict to .issues/<id>.md. Returns the path."""
     path = require_issue_dir()
@@ -102,27 +134,10 @@ def write_issue(issue: dict) -> str:
     # what just landed on disk.
     issue["updated_at"] = now()
 
-    # The exact inverse of parse_issue - every frontmatter key back out, same
-    # fence, same body. Change one and you must change the other, which is why
-    # they live together. The four known keys keep their documented order;
-    # anything else a human added to the file follows, rather than being
-    # dropped on the next rewrite. "title" is derived from the body heading,
-    # not a frontmatter field, so it is not written back.
-    known = ("id", "status", "created_at", "updated_at")
-    fields = [f"{key}: {issue[key]}" for key in known]
-    fields += [
-        f"{key}: {value}"
-        for key, value in issue.items()
-        if key not in known + ("title", "body")
-    ]
-    frontmatter = "\n".join(fields)
-
-    content = f"""---
-{frontmatter}
----
-
-{issue["body"]}
-"""
+    # "title" is derived from the body heading, not a frontmatter field, so it
+    # is not written back.
+    fields = {key: value for key, value in issue.items() if key not in ("title", "body")}
+    content = join_file(fields, issue["body"], first=("id", "status", "created_at", "updated_at"))
 
     file_path = os.path.join(path, f"{issue['id']}.md")
     with open(file_path, "w", encoding="utf-8") as md_file:
