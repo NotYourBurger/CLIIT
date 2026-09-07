@@ -51,7 +51,7 @@ def demo():
     with tempfile.TemporaryDirectory() as tmp:
         os.environ["ISSUES_DIR"] = tmp
         try:
-            for n in range(1, 7):
+            for n in range(1, 9):
                 run(create_issue, f"Issue {n}", "...", "medium")
 
             sha = head_sha()
@@ -107,8 +107,40 @@ def demo():
             kinds = [item["type"] for item in evidence]
             assert kinds == (["commit"] if sha else []) + ["test", "pr", "verified"], evidence
 
-            # The three reasons that cost a word and a sentence.
-            run(close_issue, "ISS-002", not_planned=True, message="Conflicts with search.")
+            # --verified satisfies the evidence rule with a sentence no
+            # machine can check, so the close says so - on stderr, and without
+            # refusing, the same answer this command already gives an unticked
+            # checkpoint. stdout is byte for byte what it was.
+            code, said, err = run(
+                close_issue,
+                "ISS-007",
+                completed=True,
+                message="Read it through.",
+                verified=["looks fine"],
+            )
+            assert code is None, (code, err)
+            assert said.strip() == "ISS-007 is closed - completed", said
+            assert "--verified" in err and "ISS-007" in err, err
+
+            # One checkable item alongside it and there is nothing to warn
+            # about: the loophole is evidence that is *only* verified.
+            code, said, err = run(
+                close_issue,
+                "ISS-008",
+                completed=True,
+                message="Ran the suite.",
+                tests=["uv run python tests/all.py"],
+                verified=["looks fine"],
+            )
+            assert code is None, (code, err)
+            assert "--verified" not in err, err
+
+            # The three reasons that cost a word and a sentence. None of them
+            # carries evidence, and none of them may pick up the warning.
+            _, _, err = run(
+                close_issue, "ISS-002", not_planned=True, message="Conflicts with search."
+            )
+            assert "--verified" not in err, err
             assert read(tmp, "ISS-002")["reason"] == "not-planned"
             assert "evidence" not in read(tmp, "ISS-002"), "no evidence, no field"
 

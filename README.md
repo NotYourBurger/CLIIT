@@ -368,6 +368,14 @@ fetches — closing an issue must never need the network. `--commit` is the one
 piece that is checked, with `git cat-file` against your local repo, and the
 check is skipped rather than fatal when there is no repo.
 
+Which leaves one soft spot, and `close` names it rather than closing it. A
+`completed` whose evidence is nothing but `--verified` gets one line on stderr
+saying so — the sentence satisfied the rule, and no machine can tell you whether
+it was true. Requiring a commit or a test instead would give the rule teeth and
+would also refuse the honest case: this project's own test fixtures close with
+`--verified` so they are not tied to whatever repo they run inside. So the
+divergence is made visible and nothing more. Exit code and stdout are unchanged.
+
 `--duplicate-of` and `--superseded-by` carry the reason themselves, and take the
 same two checks `--blocked-by` does: the id has to exist, and it cannot be the
 issue itself. A dangling pointer in the one field whose job is to point somewhere

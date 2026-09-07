@@ -1053,6 +1053,19 @@ def close_issue(
     # stopped being relevant halfway through the work is the common case. So
     # the divergence is made visible and nothing more - stderr, where every
     # other note to a human goes, leaving stdout parseable.
+    # The evidence rule is satisfied by --verified, and --verified is a
+    # sentence: "looks fine" passes a rule that sits next to a field git can
+    # check. Requiring a commit or a test for `completed` would give it real
+    # teeth and would also refuse the honest case - tests/helpers.py closes with
+    # --verified precisely so the fixtures are not tied to whatever repo they
+    # run inside. So the same answer as the checkpoints below: name the
+    # divergence on stderr, close anyway, leave stdout as it was.
+    if completed and all(item["type"] == "verified" for item in evidence):
+        print(
+            f"{id} is closed on --verified alone - nothing in its evidence can be checked",
+            file=sys.stderr,
+        )
+
     plan = read_plan(id)
     left = [point["text"] for point in plan["checkpoints"] if not point["done"]] if plan else []
     if left:
