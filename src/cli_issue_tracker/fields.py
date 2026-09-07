@@ -45,6 +45,17 @@ def assignee_of(issue):
     return issue.get("assignee", "-")
 
 
+def claimable_by(issue, who):
+    """Whether `who` may take this issue: nobody owns it, or they already do.
+
+    The one place that rule lives. `claim` held it inline and `next` did not
+    hold it at all, so the command whose determinism is the point promised two
+    agents the same id. Same arrangement `in_the_way` already has - one
+    predicate, and nothing grows a second opinion of it."""
+    owner = issue.get("assignee")
+    return not owner or owner == who
+
+
 def current_user():
     """Who `claim` acts as when --by is not given: $ISSUE_USER, then
     `git config user.name`, then nothing.

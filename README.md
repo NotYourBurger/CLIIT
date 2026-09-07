@@ -141,6 +141,21 @@ you two different answers and neither gets finished. The status and priority
 orders are the same two tuples `list` reads backwards, so there is one place
 saying what urgent means.
 
+Issues assigned to somebody else are never returned either, by the rule
+`claim` already had: an issue is yours to take when nobody owns it or you
+already do. `next` was the command not reading that field, which is how two
+agents asking at once were handed the same id — the tie-breaking down to the
+id that makes the answer stable is exactly what makes it identical. Only when
+there is a name to compare against: with no `$ISSUE_USER` and no
+`git config user.name` nothing is filtered, because a solo user cannot be
+anybody and must not be told their own backlog is spoken for. When every
+candidate belongs to someone else it exits 1 with its own line —
+`Nothing to work on - N issue(s) are assigned to someone else` — because going
+to ask an owner is a different repair from closing or unblocking something.
+`issue brief` is unfiltered on purpose: orientation has to show what other
+people are on, and *what is going on here* is a different question from *what
+may I start*.
+
 Closed and blocked issues are never returned, by the same `in_the_way` rule
 `--ready` uses — `--ready` is that rule plus "open", `next` is that rule plus
 "not closed", and neither has its own idea of what blocks work. The human
@@ -568,7 +583,7 @@ file per thing that can break:
 | `test_search.py`     | matching, the filters that AND with it, and the exit code   |
 | `test_blockers.py`   | dependencies: one stored side, two read, and the bad edges  |
 | `test_assignee.py`   | ownership: the one write with a precondition, and the race  |
-| `test_next.py`       | the `next` ranking, every tie-breaker, and the empty case    |
+| `test_next.py`       | the `next` ranking, every tie-breaker, ownership, empty case |
 | `test_close.py`      | closing: the reasons, the evidence rule, and what it refuses |
 | `test_plan.py`       | seeding, resuming, the blocked refusal, and a mangled plan  |
 | `test_encoding.py`   | that nothing reads or writes text at the locale default     |

@@ -3,7 +3,9 @@
 The whole command is one ranking and one guarantee, so that is what this
 checks: every term of next_rank in isolation, in-progress ahead of a
 higher-priority open issue, a blocked issue never selected in either status,
-and the empty backlog exiting 1 with nothing on stdout.
+and the empty backlog exiting 1 with nothing on stdout. Plus the ownership
+filter, which is the second guarantee: two agents must not be handed the same
+id, and the determinism above is what would otherwise ensure they are.
 
 Run: uv run python tests/test_next.py
 """
@@ -14,8 +16,11 @@ import tempfile
 
 from helpers import close
 from helpers import run
+from cli_issue_tracker import issues
 from cli_issue_tracker.issues import create_issue, next_issue, set_fields
 from cli_issue_tracker.storage import parse_issue, write_issue
+
+real_user = issues.current_user
 
 
 def filed_at(tmp, id, created_at):
@@ -24,6 +29,15 @@ def filed_at(tmp, id, created_at):
     never gets exercised."""
     issue = parse_issue(os.path.join(tmp, f"{id}.md"))
     issue["created_at"] = created_at
+    write_issue(issue)
+
+
+def assign(tmp, id, who):
+    """Put an owner on an issue. `claim` is the command for this and has its own
+    checks in test_claim.py; here the field is a precondition, not the thing
+    under test."""
+    issue = parse_issue(os.path.join(tmp, f"{id}.md"))
+    issue["assignee"] = who
     write_issue(issue)
 
 
@@ -120,8 +134,43 @@ def demo():
             close("ISS-001", "ISS-002", "ISS-003")
             code, out, err = run(next_issue, as_json=True)
             assert code == 1 and out == "" and "Nothing to work on" in err, (code, out, err)
+
+            # Ownership. Three open issues, one each: unassigned, mine, and
+            # somebody else's - the id order is also the rank order, so the
+            # pick moves only because the filter moved it.
+            for n in range(6, 9):
+                run(create_issue, f"Issue {n}", "...", "medium")
+            assign(tmp, "ISS-007", "me")
+            assign(tmp, "ISS-008", "someone-else")
+
+            os.environ["ISSUE_USER"] = "me"
+            # Assigned elsewhere is skipped; unassigned is still first.
+            assert picked() == "ISS-006"
+            close("ISS-006")
+            # ...and my own is returned, which is the half a plain
+            # "unassigned only" filter would have got wrong.
+            assert picked() == "ISS-007"
+            close("ISS-007")
+
+            # Every candidate is someone else's: exit 1, empty stdout, and a
+            # sentence naming a different repair from the empty backlog.
+            code, out, err = run(next_issue)
+            assert code == 1 and out == "", (code, out)
+            assert "1 issue(s) are assigned to someone else" in err, err
+
+            # No name configured means no filtering - a solo user with no
+            # $ISSUE_USER and no git name must not be told the backlog is all
+            # spoken for. issues.py imported the name, so that is where the
+            # stand-in goes.
+            os.environ.pop("ISSUE_USER")
+            issues.current_user = lambda: ""
+            try:
+                assert picked() == "ISS-008"
+            finally:
+                issues.current_user = real_user
         finally:
             os.environ.pop("ISSUES_DIR", None)
+            os.environ.pop("ISSUE_USER", None)
     print("ok")
 
 

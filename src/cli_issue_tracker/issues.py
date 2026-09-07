@@ -31,6 +31,7 @@ from cli_issue_tracker.fields import STATUSES
 from cli_issue_tracker.fields import STATUS_ORDER
 from cli_issue_tracker.fields import assignee_of
 from cli_issue_tracker.fields import blockers_of
+from cli_issue_tracker.fields import claimable_by
 from cli_issue_tracker.fields import current_user
 from cli_issue_tracker.fields import evidence_label
 from cli_issue_tracker.fields import evidence_of
@@ -337,18 +338,39 @@ def next_issue(as_json=False):
     issues, by_id = select_issues()
     candidates = ranked_actionable(issues, by_id)
 
-    if not candidates:
+    # Someone else's issue is not the next thing for you to do. The rule
+    # already existed - `claim` refuses an issue that is not yours - and this
+    # is the command that was ignoring it, which is exactly why two agents
+    # asking at once were handed the same id: `next_rank` breaks every tie
+    # down to the id, so both got the identical answer.
+    #
+    # Only with a name to compare against. A solo user with no $ISSUE_USER and
+    # no git config user.name has no way to be anybody, and telling them their
+    # own backlog is all spoken for would be worse than not filtering.
+    #
+    # Here and not in `actionable()`: `brief` shares `ranked_actionable`, and
+    # orientation has to keep showing what other people are on. What is going
+    # on here is a different question from what may I start.
+    who = current_user()
+    mine = [issue for issue in candidates if claimable_by(issue, who)] if who else candidates
+
+    if not mine:
         # Nothing on stdout in either mode, and exit 1: a parser gets a clean
         # EOF instead of a prose apology, and a script gets the branch it
         # wants. Same contract `search` has - a lookup that found nothing
         # failed, unlike a filter that matched nothing.
+        #
+        # Two sentences because they are two repairs: go and ask an owner, or
+        # close and unblock something.
         print(
-            "Nothing to work on - every issue is closed or blocked",
+            f"Nothing to work on - {len(candidates)} issue(s) are assigned to someone else"
+            if candidates
+            else "Nothing to work on - every issue is closed or blocked",
             file=sys.stderr,
         )
         sys.exit(1)
 
-    issue = candidates[0]
+    issue = mine[0]
 
     # The plan is where the work stands and git is what actually changed - the
     # two halves that used to live in a conversation. Read here rather than in
@@ -1044,9 +1066,8 @@ def claim_issue(id, by=None):
     if issue["status"] == "closed":
         print(f"{id} is closed - there is nothing to claim", file=sys.stderr)
         sys.exit(1)
-    owner = issue.get("assignee")
-    if owner and owner != who:
-        print(f"{id} is already {owner}'s", file=sys.stderr)
+    if not claimable_by(issue, who):
+        print(f"{id} is already {issue['assignee']}'s", file=sys.stderr)
         sys.exit(1)
 
     set_fields([id], assignee=who, quiet=True)
