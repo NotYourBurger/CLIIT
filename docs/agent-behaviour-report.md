@@ -27,6 +27,13 @@ kill's exact task event, and the killed worker's tool-call count did not survive
 the later cutoff. This report does not turn those missing measurements into
 facts. ISS-036 was filed for that failure.
 
+**Sections 1, 3 and 4 were written while those measurements were unavailable.
+They have since been recovered from the coordinating session, which was
+rate-limited rather than terminated, and are supplied verbatim in section 8.**
+The refusals below are left standing rather than rewritten, because what they
+were right about is the mechanism: the data survived by luck, not by design,
+which is why ISS-036 stays open.
+
 The durable pre-control anchor is `ae715a9`, the ISS-031 close. The coordinator
 continuation found `871849a` at `HEAD`: ISS-032 was closed, ISS-033 was
 uncommitted and apparently finished, and ISS-034/035 were still untracked issue
@@ -113,8 +120,10 @@ correction.
 ### Snapshot that survived
 
 The intentional kill-time file was not separately copied into the repository,
-so its exact bytes cannot be recovered. The durable plan says what the pickup
-found:
+so its exact bytes cannot be recovered from the repository alone. **They were
+copied to the coordinator's scratchpad at 16:27 and are reproduced in section
+8.4**, along with the kill trigger and timing in 8.3. The durable plan says what
+the pickup found:
 
 > The resumed session found `.gitattributes` written but its checkpoint unticked.
 > Nothing else was misrecorded; the plan's Discoveries section was what made the
@@ -211,11 +220,16 @@ the code across a hard stop, but it did not carry the measurement protocol.**
 
 ### `issue next` and `--claim`
 
-The claim-race probe cannot be scored. No durable file contains either worker's
-stdout, whether both initially selected the same ID, or the loser's retry text.
-The final issue files and git history cannot reconstruct reverted assignee
-writes. Treating a clean final status as proof would repeat ISS-031's sensor
-mistake.
+The claim-race probe cannot be scored from the repository. No durable file in it
+contains either worker's stdout, whether both initially selected the same ID, or
+the loser's retry text; the final issue files and git history cannot reconstruct
+reverted assignee writes, and treating a clean final status as proof would
+repeat ISS-031's sensor mistake.
+
+**It can be scored from the coordinating session, and it passes — see 8.1.**
+Both workers' verbatim stdout and the on-disk assignee check survived there.
+Two agents four seconds apart got different issues, and the loser was told
+nothing at all.
 
 The later workers were deliberately named an issue, so they do not add a second
 `issue next` measurement. ISS-036 tracks durable capture for future probes.
@@ -320,3 +334,189 @@ decision was outside this run.
 - the ISS-033 close-time census found 0 CRLF sequences in 43 Markdown files;
 - the final census, after ISS-034/035 plans and ISS-036, also contains no CRLF;
 - `uv run issue check --plans` reports all ten plans touched and fully ticked.
+
+---
+
+## 8. Appendix: measurements recovered from the coordinating session
+
+Sections 1, 3 and 4 correctly refused to score four measurements, because the
+session holding them had stopped answering. It did not lose them. The
+coordinating session that ran Probe A and issued the kill was rate-limited at
+16:29 +06:00, not terminated, and its scratchpad and conversation both survived.
+This appendix supplies what those sections marked unavailable. Nothing here is
+reconstructed from final state; each item is quoted from the artifact named
+beside it.
+
+ISS-036 stays open. The point it makes is about the capture mechanism, not about
+this particular recovery: these numbers survived because one session happened to
+come back, which is exactly the "habit, not a suite" failure this repository
+keeps rediscovering.
+
+### 8.1 Probe A: the claim race, scored
+
+Two fresh general-purpose agents, spawned in one message, each told to run one
+command and report verbatim. Distinct identities, because `current_user()` falls
+back to `git config user.name` and two agents sharing one name is not a race.
+
+| agent | stdout, first line | stderr | exit |
+|---|---|---|---|
+| `ISSUE_USER=agent-alpha` | `ISS-032  issue check --plans - measure plan-keeping, not commit cadence` | empty | 0 |
+| `ISSUE_USER=agent-beta` | `ISS-033  Line endings: every write is LF, and the round trip can see it` | empty | 0 |
+
+Both printed the same four-line shape (`Status: open`, `Priority: high`,
+`Ready: yes`). Verified on disk immediately afterwards, before the assignees
+were cleared:
+
+```
+ISS-032  assignee: agent-alpha  updated_at: 2026-09-07T16:12:52+06:00
+ISS-033  assignee: agent-beta   updated_at: 2026-09-07T16:12:56+06:00
+```
+
+**The probe passes.** Four seconds apart, the two agents were handed different
+issues. Beta was walked past ISS-032 to the next candidate, and the interesting
+part is what beta was *not* told: no error, no warning, no non-zero exit,
+nothing on stderr. It never learned it had lost a race. That is ISS-027's
+ownership filter and ISS-028's `try_claim` retry behaving exactly as their
+issues promised - the loser is owed a row it can start, and it got one silently.
+
+Two limits worth stating. Four seconds is a wide window, so this exercises the
+ownership filter rather than the file-level write race `try_claim` exists for;
+and `--claim` writes `assignee` while leaving `status: open`, so a claimed issue
+is not visibly in progress until `start` runs.
+
+### 8.2 Phase 0 census
+
+Taken at 16:12 against `ae715a9`, before anything moved:
+
+- `uv run issue check` - silent, exit 0.
+- `tests/all.py` - 13 files, all ok. `convert_id.py` self-check ok.
+- `issue check --plans` - six plans, every one fully ticked (5/5 to 9/9), every
+  one reading `1 commit` or `2 commits`. The ISS-032 argument in one screen.
+- Line endings, counted in bytes: **all 35 `.issues/*.md` were 100% CRLF, zero
+  bare LF.** Work plans split - ISS-026/028/029/031 pure LF, ISS-027/030 pure
+  CRLF. The split is itself the bug: plans an agent rewrote wholesale came out
+  LF, plans only `write_plan` had touched came out CRLF.
+
+### 8.3 The kill instant
+
+The trigger was the product's own artifact. A watcher polled
+`.issues/work/*.md` every four seconds and emitted a line whenever a plan's
+checkpoint count changed; the kill fired on the event, not on a timer.
+
+```
+16:22:41  NEW  ISS-033 0/0 (423b)      <- issue start, bare seed
+16:23:17  TICK ISS-033 0/0 -> 0/6      <- six checkpoints written
+16:27:17  TICK ISS-033 0/6 -> 5/7      <- KILL TRIGGER
+```
+
+`TaskStop` was issued on the next turn after that 16:27:17 event, so the kill
+landed within roughly fifteen seconds of it. The task reported `status: killed`,
+and the worker's last emitted line was:
+
+> Important discovery - recording it in the plan before continuing.
+
+It was cut off *reaching for* the plan file. Whatever that discovery was is
+gone; the ones already written down are in 8.4, and are what the pickup used.
+
+That `0/6 -> 5/7` transition is the most important behavioural finding in this
+report, and it is a rule violation. In one edit the worker rewrote its own plan
+from six checkpoints to seven - adding `.gitattributes` after the autocrlf
+discovery - and ticked five boxes at once. Four minutes of silence, then
+everything at once. Rule 8 says do not wait until the end of the session to
+record progress, and for those four minutes this agent was one `TaskStop` away
+from leaving a `0/6` plan describing work that was substantially done. The
+feature survived here because the batch landed *before* the kill. Ten seconds
+earlier and this section would read very differently.
+
+The control run on ISS-032 batched the same way, less dangerously:
+
+```
+16:15:25 NEW 0/0 (423b)  ·  16:15:37 0/6  ·  16:16:25 2/6
+16:18:41 3/6             ·  16:19:37 5/6  ·  16:20:21 6/6
+```
+
+Two ticks in one edit, twice. Both observed agents treated ticking as something
+done after a batch of work, not after each checkpoint. No agent in this run
+ticked exactly one box at a time throughout.
+
+### 8.4 The kill-time plan, exact bytes
+
+Copied out of the working tree at 16:27, before the pickup agent existed
+(`ISS-033-plan-at-kill.md`, 2399 bytes, md5 `d892c696...`). This is the file the
+fresh agent inherited:
+
+```markdown
+## Plan
+
+- [x] `newline="\n"` on every write-mode `open()` in src/
+- [x] `round_trip` reads with `newline=""` so the comparison is byte-honest
+- [x] `test_encoding.py:unguarded` requires `newline=` on write-mode `open()`
+- [x] CRLF cases: a round trip in test_storage.py, a plan edit in test_plan.py
+- [x] Normalise the CRLF files already on disk, byte level, once
+- [ ] .gitattributes, or the normalise pass is undone by the next checkout
+- [ ] Full suite, README, commit, close
+
+## Discoveries
+
+- `core.autocrlf` is `true` on this machine, so the CRLF was never in the
+  repository - the index already held LF and git was converting on checkout.
+  `git diff --stat` after the byte-level normalise pass lists no change to any
+  of the thirty-five files [...] So the normalise pass the issue asked for is a
+  working-tree fix that the next `git checkout` reverts, and the fix does not
+  hold without a .gitattributes. That is the half the issue did not have.
+- The seeded `.issues/work/ISS-033.md` this session started from was itself
+  CRLF, written by the code being fixed.
+
+## Current
+
+.gitattributes, then the full suite.
+
+## Next
+
+README check, commit, close with evidence.
+```
+
+Two things about this file deserve separating, because the sections above merge
+them.
+
+**The plan was ahead of the issue.** ISS-033 asked for a one-off byte-level
+normalisation pass. The worker did it, then found it was theatre:
+`core.autocrlf=true` meant the CRLF was never in the index at all, so the pass
+changes nothing git can see and the next checkout undoes it. It wrote that down,
+added a seventh checkpoint the issue never asked for, and died. **A fresh agent
+inherited a corrected specification.** No conversation, no handover, no author
+available - the correction was in the artifact because rule 6 got followed once.
+
+**The plan was also wrong about itself, in the recoverable direction.** At kill
+time `.gitattributes` existed, untracked, 679 bytes, complete, with a full
+rationale comment - while its checkpoint sat unticked and `Current` said to go
+write it. The plan understated progress. The pickup caught this and recorded it,
+which is the behaviour worth having: it verified against disk instead of
+trusting the file.
+
+That asymmetry is worth naming, because the failure runs the other way too and
+that direction is not recoverable. A plan that *understates* costs a re-check. A
+plan that *overstates* - a box ticked hopefully, the compound "suite, commit,
+close" checkpoint ticked before any of it happened - sends the next agent past
+work nobody did, and nothing in the format distinguishes an honest tick from an
+optimistic one. This run produced exactly that too: the ISS-033 pickup ticked
+7/7 at 16:29:52 and was rate-limited seconds later, having committed nothing.
+
+### 8.5 Cost, where it survived
+
+| run | outcome | tool calls | tokens | wall clock |
+|---|---|---|---|---|
+| Probe alpha | reported | 1 | 59,922 | 12.5s |
+| Probe beta | reported | 1 | 59,933 | 12.6s |
+| ISS-032 control | closed, no correction commit | 55 | 118,158 | 7m 16s |
+| ISS-033 first worker | killed at 5/7 | not captured | not captured | ~4m 40s to kill |
+| ISS-033 pickup | rate-limited after ticking 7/7 | not captured | not captured | ~2m 40s |
+
+The two interrupted rows are why ISS-036 exists: a task that never returns never
+reports its usage, and nothing on disk records it.
+
+One incidental finding, recorded because it is the same lesson. The first
+ISS-033 worker wrote its throwaway normalisation script into the coordinator's
+scratchpad rather than into the repository - correct, since the issue said "no
+shipped verb" - and that file (`normalise.py`, 16:26) outlived the agent that
+wrote it only by accident of which machine the scratchpad happened to sit on.
