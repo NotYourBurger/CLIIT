@@ -406,7 +406,11 @@ an issue never reuses a live id.
 | File            | Owns                                                   |
 | --------------- | ------------------------------------------------------ |
 | `cli.py`        | Typer commands                                         |
-| `issues.py`     | what each command does and how output looks            |
+| `issues.py`     | what each command does                                 |
+| `fields.py`     | reading one issue's fields, and what they may hold     |
+| `deps.py`       | what blocks what                                       |
+| `validate.py`   | the checks that run before anything is written         |
+| `render.py`     | how output looks, human and `--json`                   |
 | `storage.py`    | finding `.issues/`, and the file format                 |
 | `convert_id.py` | allocating the next id                                 |
 | `init.py`       | creating `.issues/` here, and only here                |

@@ -40,11 +40,24 @@ change:
 
 ## Architecture
 
-`cli.py` (Typer, argument shapes only) → `issues.py` (all behaviour and output)
-→ `storage.py` (locating `.issues/`, parse/write) + `convert_id.py` (id
-allocation) + `init.py`.
+`cli.py` (Typer, argument shapes only) → `issues.py` (the commands) → four
+layers under them, imported in this order and never the other way:
+`storage.py` (locating `.issues/`, parse/write) → `fields.py` (reading one
+parsed issue, and the status/priority tuples) → `deps.py` (what blocks what)
+→ `validate.py` (every check that exits before a write) → `render.py` (every
+table, line and dict that gets printed). Plus `convert_id.py` (id allocation)
+and `init.py`.
 
-`issues.py` is the one large file on purpose. The pieces worth knowing:
+Nothing imports `issues.py`. If something wants to, the thing it wants belongs
+in a lower layer — and Python raises on the cycle, so the suite says so at
+import time.
+
+`issues.py` is still the one large file on purpose: `list`, `next`, `brief`,
+`search`, `view`, `set`, `close` and `claim` share their filtering, their
+blocking rule and their ordering, and a module per verb would give each verb a
+private copy of an opinion this repo has exactly one of. The split was the
+other way — the layers under the verbs, not the verbs. The pieces worth
+knowing:
 
 - `select_issues()` is the single filter path — `list` and `search` both go
   through it and get back `(issues, by_id)`. `by_id` is every issue on disk, not
@@ -77,8 +90,10 @@ allocation) + `init.py`.
   bug landed three times. Every `open()` and `subprocess.run(text=True)` must pass
   `encoding="utf-8"`; `tests/test_encoding.py` walks the source with `ast` and
   fails on any new one.
-- **Comments explain why, not what.** The existing prose in `issues.py` and
-  `storage.py` records rejected alternatives. Match that register; don't strip it.
+- **Comments explain why, not what.** The existing prose across `issues.py`,
+  `storage.py` and the four layers records rejected alternatives, and each
+  module's docstring is the paragraph that covers the whole file. Match that
+  register; don't strip it.
 - Deliberate shortcuts with a known ceiling are marked `ponytail:` with the
   upgrade path.
 

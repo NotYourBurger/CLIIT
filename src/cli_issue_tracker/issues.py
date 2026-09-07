@@ -1,3 +1,18 @@
+"""The commands, and the two things every command shares.
+
+What is left here after the four layers under it moved out to `fields`,
+`deps`, `validate` and `render` is the ten functions `cli.py` calls plus
+`select_issues` - the single filter path both `list` and `search` go through -
+and `rank` / `next_rank`, the single ordering read in opposite directions. That
+sharing is why this was one file in the first place and why it stays one: a
+module per verb would give each verb a private copy of an opinion this repo has
+exactly one of.
+
+Imports go one way only - storage, fields, deps, validate, render, then here.
+Nothing imports this module; if something wants to, the thing it wants belongs
+in a lower one.
+"""
+
 import json
 import os
 import subprocess
