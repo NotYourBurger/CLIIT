@@ -9,6 +9,10 @@ from cli_issue_tracker.issues import set_fields
 from cli_issue_tracker.issues import close_issue
 from cli_issue_tracker.issues import log_issue
 from cli_issue_tracker.issues import claim_issue
+from cli_issue_tracker.handover import create_handover
+from cli_issue_tracker.handover import latest_command
+from cli_issue_tracker.handover import list_handovers
+from cli_issue_tracker.handover import view_handover
 from cli_issue_tracker.init import init
 import sys
 app = typer.Typer()
@@ -151,3 +155,51 @@ def release(id: str):
 @app.command("log")
 def log(id):
     log_issue(id)
+
+
+# The one sub-app: `handover` has four verbs of its own and they are about a
+# different artifact, so they get a namespace rather than four more top-level
+# commands that all start with the same word anyway.
+handover_app = typer.Typer(help="Checkpoints in an issue's execution")
+app.add_typer(handover_app, name="handover")
+
+
+@handover_app.command("create")
+def handover_create(
+    ids: list[str] = typer.Argument(..., metavar="IDS...", help="The issues; the first is primary"),
+    summary: str = typer.Option(..., "--summary", help="Where the work stands; required"),
+    # `next` is a builtin, so the parameter is not - the flag is spelled out.
+    next_action: str = typer.Option(..., "--next", help="The nearest concrete next step; required"),
+    done: list[str] = typer.Option([], "--done", help="What this session finished; repeatable"),
+    remaining: list[str] = typer.Option([], "--remaining", help="What is left; repeatable"),
+    decision: list[str] = typer.Option([], "--decision", help="What we chose; repeatable"),
+    discovered: list[str] = typer.Option([], "--discovered", help="What we learned; repeatable"),
+    blocker: list[str] = typer.Option(
+        [], "--blocker", help="What stopped this session - not a dependency; repeatable"
+    ),
+    resume_at: str = typer.Option(None, "--resume-at", help="A file, a symbol, or both"),
+):
+    create_handover(
+        ids, summary, next_action, done, remaining, decision, discovered, blocker, resume_at
+    )
+
+
+@handover_app.command("latest")
+def handover_latest(
+    id: str, as_json: bool = typer.Option(False, "--json", help="Print the handover as JSON")
+):
+    latest_command(id, as_json)
+
+
+@handover_app.command("list")
+def handover_list(
+    id: str, as_json: bool = typer.Option(False, "--json", help="Print the handovers as JSON")
+):
+    list_handovers(id, as_json)
+
+
+@handover_app.command("view")
+def handover_view(
+    id: str, as_json: bool = typer.Option(False, "--json", help="Print the handover as JSON")
+):
+    view_handover(id, as_json)

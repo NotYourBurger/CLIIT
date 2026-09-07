@@ -1,8 +1,8 @@
 """Pass, or exit 1 saying why - and always before anything touches disk.
 
-A bad status, priority, blocker or commit is a failed command, not a
-half-applied one, and a rejected `create` must not burn an id. Every check in
-here either returns or exits.
+A bad status, priority, blocker, commit or handover field is a failed command,
+not a half-applied one, and a rejected `create` must not burn an id. Every
+check in here either returns or exits.
 
 The one rule the whole file format rests on lives at the top of `clean_set`:
 frontmatter has no list type, so `labels` and `blocked_by` are comma-joined
@@ -17,6 +17,7 @@ from cli_issue_tracker.fields import PRIORITIES
 from cli_issue_tracker.fields import STATUSES
 from cli_issue_tracker.fields import blockers_of
 from cli_issue_tracker.deps import cycle_from
+from cli_issue_tracker.storage import read_issue
 
 
 def clean_set(words, kind, clean=lambda word: word):
@@ -57,6 +58,58 @@ def clean_ids(words):
     normalisation that is right for every repo. Whether the id exists is
     checked where the issues are in hand, not here."""
     return clean_set(words, "issue id")
+
+
+def require_prose(value, kind):
+    """A handover's free-text field: present, not blank, and no line of it
+    starting with `## `. The heading is what the body parser splits on, so a
+    summary carrying one would come back as two sections and quietly lose half
+    itself - the same shape of silent loss the comma rule exists to stop."""
+    text = (value or "").strip()
+    if not text:
+        print(f"A handover needs a {kind} - it cannot be blank", file=sys.stderr)
+        sys.exit(1)
+    if any(line.startswith("## ") for line in text.splitlines()):
+        print(
+            f"A {kind} cannot contain a line starting with '## ' - that is the "
+            f"section marker in the handover body",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    return text
+
+
+def require_items(values, kind):
+    """One of the handover's repeatable lists. Each item is one `- ` line, so a
+    newline inside one would split it in two on the way back; order is kept
+    rather than sorted the way clean_set sorts, because these are steps and the
+    order is the caller's meaning."""
+    items = []
+    for value in values:
+        text = value.strip()
+        if not text:
+            print(f"A {kind} cannot be empty", file=sys.stderr)
+            sys.exit(1)
+        if "\n" in text:
+            print(f"A {kind} must be one line - pass two flags instead", file=sys.stderr)
+            sys.exit(1)
+        items.append(text)
+    return items
+
+
+def require_issues(words):
+    """Every referenced issue exists, in the order given - the first is the
+    primary. Ordered rather than sorted like clean_ids: the caller said which
+    issue this handover is mostly about by naming it first. clean_set is still
+    what checks the two shared rules, because `issues:` is comma-joined like
+    every other id field."""
+    clean_set(words, "issue id")
+    ids = list(dict.fromkeys(word.strip() for word in words))
+    for id in ids:
+        if read_issue(id) is None:
+            print(f"Issue {id} Was Not Found", file=sys.stderr)
+            sys.exit(1)
+    return ids
 
 
 def require_blockers(ids, block, unblock, by_id):

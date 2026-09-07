@@ -8,9 +8,9 @@ sharing is why this was one file in the first place and why it stays one: a
 module per verb would give each verb a private copy of an opinion this repo has
 exactly one of.
 
-Imports go one way only - storage, fields, deps, validate, render, then here.
-Nothing imports this module; if something wants to, the thing it wants belongs
-in a lower one.
+Imports go one way only - storage, fields, deps, validate, render, handover,
+then here. Nothing imports this module; if something wants to, the thing it
+wants belongs in a lower one.
 """
 
 import json
@@ -64,12 +64,14 @@ from cli_issue_tracker.render import describe
 from cli_issue_tracker.render import next_lines
 from cli_issue_tracker.render import omitted
 from cli_issue_tracker.render import print_table
+from cli_issue_tracker.render import handover_reference
 from cli_issue_tracker.render import resolved_lines
 from cli_issue_tracker.storage import require_issue_dir
 from cli_issue_tracker.storage import now
 from cli_issue_tracker.storage import parse_issue
 from cli_issue_tracker.storage import read_issue
 from cli_issue_tracker.storage import write_issue
+from cli_issue_tracker.handover import latest_handover
 
 
 def create_issue(title: str, description: str, priority: str = "medium", labels=()):
@@ -609,8 +611,18 @@ def view_issue(id, as_json=False):
                 label = evidence_label(item["type"]) + ":"
                 console.print(f"{label:<11} {item['value']}", markup=False)
 
+    # A pointer, not the handover: three lines saying continuation context
+    # exists and where. Inlining the whole thing here is the duplication the
+    # handover PRD spends a section refusing, and `issue handover latest` is
+    # the command that already prints it. Nothing at all when there is none.
+    handover = latest_handover(id)
+    if handover:
+        console.print()
+        for line in handover_reference(handover):
+            console.print(line, markup=False, highlight=False)
+
     console.print(Markdown(issue["body"]))
-    
+
 
 def set_fields(
     words: list[str],

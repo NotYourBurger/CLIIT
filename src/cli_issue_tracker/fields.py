@@ -31,6 +31,22 @@ REASONS = ("completed", "not-planned", "duplicate", "superseded")
 SETTABLE = tuple(status for status in STATUSES if status != "closed")
 
 
+# The body of a handover file, and the JSON keys, in one table: the heading a
+# section is written under, and whether it is a list of `- ` lines or prose.
+# One table rather than a writer and a reader that each know the order - they
+# have to be exact inverses, which is the property test_handover.py defends.
+SECTIONS = (
+    ("summary", "Summary", False),
+    ("done", "Done", True),
+    ("remaining", "Remaining", True),
+    ("decisions", "Decisions", True),
+    ("discoveries", "Discoveries", True),
+    ("blockers", "Blockers", True),
+    ("resume_at", "Resume At", False),
+    ("next", "Next", False),
+)
+
+
 def priority_of(issue):
     """What to show and filter on. Missing stays missing - the issues written
     before this field existed never had a priority, and calling those "medium"

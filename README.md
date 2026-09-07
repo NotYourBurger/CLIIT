@@ -48,6 +48,10 @@ issue claim ISS-021 --by codex-1    # --by defaults to $ISSUE_USER, then git con
 issue assign ISS-021 --to codex-1   # hand it over, no questions
 issue release ISS-021               # not mine any more
 issue log ISS-001                   # the issue's git history: who changed it, when, why
+issue handover create ISS-042 --summary "..." --next "..."   # where the work stands now
+issue handover latest ISS-042       # the newest checkpoint, for the next session
+issue handover list ISS-042         # every checkpoint, newest first
+issue handover view H-006           # one checkpoint by its own id
 ```
 
 Statuses are `in-progress`, `open` and `closed` — `closed` is written by
@@ -372,6 +376,104 @@ reads it; everything else works off the filename, so issues filed under an old
 prefix keep listing and numbering restarts under the new one instead of
 continuing across both.
 
+## Handover
+
+An issue says what the work is. It does not say where the work currently
+stands, and that gap is paid for once per session: you pick up
+`ISS-042 / in-progress`, re-read the repo, re-derive the decisions the last
+session already made, and rediscover the constraint that changed the approach.
+All of that existed — in a conversation that is gone.
+
+A handover is the delta a session produced, written deliberately at the end of
+it:
+
+```bash
+issue handover create ISS-042 \
+  --summary "Cycle detection is implemented; CLI error handling remains." \
+  --done "Added DFS cycle detection" \
+  --remaining "Improve the CLI cycle error" \
+  --decision "Validate the whole graph before writing either issue" \
+  --discovered "Missing blockers intentionally remain non-blocking" \
+  --blocker "No Windows box to verify on" \
+  --resume-at "src/issues.py:set_issue" \
+  --next "Update the cycle error rendering, then run tests/test_blockers.py"
+```
+
+`--summary` and `--next` are required and may not be blank; everything else is
+optional and every list flag repeats. A vague `--next` ("continue working on
+the issue") is the failure this command exists to prevent, so it asks for the
+nearest concrete continuation point instead.
+
+Handovers are append-only. The issue is the durable definition and gets edited;
+a handover is a checkpoint in its execution and never does — a correction is a
+new handover, and `issue log` shows when each one landed. Which is also why
+`create` does not set `in-progress`, does not claim, and does not touch
+`blocked_by`: `--blocker "no Windows box"` is prose about why this session
+stopped, while `blocked_by: ISS-014` is the project dependency graph, and the
+first must never write the second.
+
+Git position is captured automatically at creation — branch, short HEAD,
+whether the tree was dirty, and the paths of the changed files, capped so a
+noisy tree cannot bury the rest. Paths only, never a diff. It is read once and
+stored: a `latest` that re-ran `git` would quietly rewrite history every time it
+was called. Outside a repo the command still works and simply records no git
+block, because the context is worth keeping either way.
+
+One handover may name several issues — `issue handover create ISS-042 ISS-045`
+— and is then found from either of them, stored once. The first id is the
+primary one.
+
+Reading it back:
+
+```text
+$ issue handover latest ISS-042
+Handover H-006
+ISS-042 - 2026-09-07 03:18
+
+SUMMARY
+Cycle detection is implemented; CLI error handling remains.
+
+DONE
+- Added DFS cycle detection
+
+REMAINING
+- Improve the CLI cycle error
+
+RESUME AT
+src/issues.py:set_issue
+
+NEXT
+Update the cycle error rendering, then run tests/test_blockers.py
+
+GIT
+feature/dependency-validation @ 81af03c
+Working tree has uncommitted changes.
+
+FILES
+src/issues.py
+tests/test_blockers.py
+```
+
+An empty section is not printed at all. `latest` and `view` take `--json`, and
+there every optional list is present and empty rather than missing, so an agent
+never has to branch on a key; `git` is `null` outside a repo, because "we could
+not read it" is not "the tree was clean". `list` is the same handovers newest
+first, one line each. All three exit 1 when there is nothing to find, the same
+contract `issue next` and `issue view` keep.
+
+`issue view` shows a three-line pointer when an issue has one — the id, the
+first line of the summary, the next action — and nothing at all when it does
+not. The full handover stays one command away rather than being inlined, which
+is the duplication this whole split exists to avoid.
+
+Handovers live in `.issues/handovers/H-001.md`, made on demand, in the same
+frontmatter-plus-body format the issues use. The computed fields are
+frontmatter and the prose is the body, under `## Summary`, `## Done` and the
+rest — five JSON arrays of sentences would have spent the promise that these
+files read fine in a diff. Manual editing stays possible: sections may be
+reordered, one the tool does not know is ignored, and a missing one reads as
+empty.
+
 ## File format
 
 Each issue is one Markdown file with YAML-style frontmatter:
@@ -401,6 +503,9 @@ does not know about are kept too, so you can add your own by hand. Ids are
 allocated as one past the highest existing id with the same prefix, so deleting
 an issue never reuses a live id.
 
+Handovers are the same format one directory down, in `.issues/handovers/`,
+numbered `H-001` against that directory alone — see [Handover](#handover).
+
 ## Layout
 
 | File            | Owns                                                   |
@@ -409,6 +514,7 @@ an issue never reuses a live id.
 | `issues.py`     | what each command does                                 |
 | `fields.py`     | reading one issue's fields, and what they may hold     |
 | `deps.py`       | what blocks what                                       |
+| `handover.py`   | what a handover is, and its four commands              |
 | `validate.py`   | the checks that run before anything is written         |
 | `render.py`     | how output looks, human and `--json`                   |
 | `storage.py`    | finding `.issues/`, and the file format                 |
@@ -422,8 +528,8 @@ so rather than looking like nothing changed.
 
 ## Status
 
-Working: `init`, `create`, `list`, `next`, `search`, `view`, `set`, `close`,
-`claim`, `assign`, `release`, `log`.
+Working: `init`, `create`, `list`, `brief`, `next`, `search`, `view`, `set`,
+`close`, `claim`, `assign`, `release`, `log`, `handover`.
 
 Run every check with `uv run python tests/all.py`. They live in `tests/`, one
 file per thing that can break:
@@ -439,6 +545,7 @@ file per thing that can break:
 | `test_assignee.py`   | ownership: the one write with a precondition, and the race  |
 | `test_next.py`       | the `next` ranking, every tie-breaker, and the empty case    |
 | `test_close.py`      | closing: the reasons, the evidence rule, and what it refuses |
+| `test_handover.py`   | the handover body round trip, ordering, and the split       |
 | `test_encoding.py`   | that nothing reads or writes text at the locale default     |
 
 No framework: each file is a script with a `demo()` that asserts and prints

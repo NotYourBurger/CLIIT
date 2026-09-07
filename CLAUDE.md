@@ -40,13 +40,16 @@ change:
 
 ## Architecture
 
-`cli.py` (Typer, argument shapes only) → `issues.py` (the commands) → four
+`cli.py` (Typer, argument shapes only) → `issues.py` (the commands) → five
 layers under them, imported in this order and never the other way:
-`storage.py` (locating `.issues/`, parse/write) → `fields.py` (reading one
-parsed issue, and the status/priority tuples) → `deps.py` (what blocks what)
-→ `validate.py` (every check that exits before a write) → `render.py` (every
-table, line and dict that gets printed). Plus `convert_id.py` (id allocation)
-and `init.py`.
+`storage.py` (locating `.issues/`, and the frontmatter format: `split_file` /
+`join_file`, with `parse_issue` / `write_issue` as the issue-shaped wrapper
+around them) → `fields.py` (reading one parsed issue, the status/priority
+tuples, and the handover `SECTIONS` table) → `deps.py` (what blocks what) →
+`validate.py` (every check that exits before a write) → `render.py` (every
+table, line and dict that gets printed) → `handover.py` (what a handover is,
+plus its own four commands). Plus `convert_id.py` (id allocation) and
+`init.py`.
 
 Nothing imports `issues.py`. If something wants to, the thing it wants belongs
 in a lower layer — and Python raises on the cycle, so the suite says so at
@@ -76,6 +79,31 @@ knowing:
   id so repeated calls are deterministic.
 - Dependencies are stored on the blocked issue only (`blocked_by`). The reverse
   direction (`blocks`) is always derived. One fact, one place.
+
+`handover.py` holds the second artifact: `.issues/handovers/H-NNN.md`, an
+append-only checkpoint saying where an issue's work stands. It keeps its own
+four verbs rather than adding them to `issues.py` — they share nothing with the
+issue verbs, and `issues.py` imports `latest_handover` for the one line
+`issue view` prints. The rules that are not obvious from the code:
+
+- **A handover is not a small issue.** The issue is the durable definition and
+  is edited; a handover is never edited, a correction is a new one. So `create`
+  does not set `in-progress`, does not claim, and does not touch `blocked_by` —
+  a `--blocker` is prose about why the session stopped, and `in_the_way` stays
+  the only thing that decides what blocked means.
+- **Frontmatter is what the tool computed, the body is what the session said.**
+  `done`, `remaining`, `decisions`, `discoveries` and `blockers` are lists of
+  sentences, and sentences have commas, so the comma-joined trick is out and
+  five more `evidence`-style JSON lines would spend the promise that these
+  files read fine in a diff. They are `## Heading` sections of `- ` bullets
+  instead, which costs the body parser in `split_sections` / `join_sections` —
+  exact inverses, guarded by `tests/test_handover.py` the way `test_storage.py`
+  guards the issue body.
+- **Git is read at creation and stored, never recomputed.** A `latest` that
+  re-shelled out to git would rewrite history every time it was called. A git
+  failure loses the git block, not the handover.
+- **Ordering is `(created_at, id)`,** never what `listdir` returned, so two
+  calls to `latest` cannot name different checkpoints.
 
 ## Conventions this repo already holds to
 

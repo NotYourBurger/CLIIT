@@ -20,6 +20,7 @@ from cli_issue_tracker.fields import assignee_of
 from cli_issue_tracker.fields import blockers_of
 from cli_issue_tracker.fields import labels_of
 from cli_issue_tracker.fields import priority_of
+from cli_issue_tracker.fields import SECTIONS
 from cli_issue_tracker.fields import resolution_of
 from cli_issue_tracker.deps import blocked_note
 from cli_issue_tracker.deps import blocks
@@ -216,3 +217,70 @@ def as_dict(issue, by_id):
             dumped.pop(key, None)
         dumped["resolution"] = resolution
     return dumped
+
+
+def handover_lines(handover):
+    """The whole handover, for a human. Headings in caps like the rest of this
+    tool's output, and an empty section is not printed at all - `absent means
+    absent` reads as well on a screen as it does in a file.
+
+    NEXT is last because it is the line the next session acts on, and the
+    terminal leaves the last line printed right above the prompt - the same
+    reason `list` sorts least-urgent-first."""
+    date = handover["created_at"].replace("T", " ")[:16]
+    lines = [f"Handover {handover['id']}", f"{' '.join(handover['issues'])} - {date}"]
+    for key, heading, is_list in SECTIONS:
+        value = handover.get(key)
+        if not value:
+            continue
+        lines.append("")
+        lines.append(heading.upper())
+        lines += [f"- {item}" for item in value] if is_list else value.splitlines()
+
+    git = handover.get("git")
+    if git:
+        lines += ["", "GIT", f"{git['branch']} @ {git['head']}"]
+        lines.append(
+            "Working tree has uncommitted changes." if git["dirty"] else "Working tree was clean."
+        )
+    if handover.get("files"):
+        lines += ["", "FILES"] + list(handover["files"])
+    return lines
+
+
+def handover_rows(handovers):
+    """One line each for `handover list`: id, the day, and the first line of
+    the summary. The day and not the timestamp - the history is read to see how
+    the work moved, and the minute it was written is in the file."""
+    return [
+        f"{handover['id']}  {handover['created_at'][:10]}  {handover['summary'].splitlines()[0]}"
+        for handover in handovers
+    ]
+
+
+def handover_reference(handover):
+    """The three lines `issue view` shows when continuation context exists. The
+    first line of each field only: this is a pointer to the handover, and a
+    view that inlined the whole thing would be the duplication the PRD spends a
+    section refusing."""
+    return [
+        f"Latest handover: {handover['id']} - {handover['created_at'][:10]}",
+        handover["summary"].splitlines()[0],
+        f"Next: {handover['next'].splitlines()[0]}",
+    ]
+
+
+def handover_as_dict(handover):
+    """The handover as JSON wants it. Every optional list is present and empty
+    rather than absent, unlike the issue renderings: a handover has a fixed
+    shape decided by this tool, so a consumer that has to branch on a missing
+    `blockers` key is paying for a fact we already know. `git` is None outside
+    a repo, because "we could not read it" is not the same as "clean"."""
+    return {
+        "id": handover["id"],
+        "created_at": handover["created_at"],
+        "issues": handover["issues"],
+        **{key: handover.get(key, [] if is_list else "") for key, _, is_list in SECTIONS},
+        "git": handover.get("git"),
+        "files": handover.get("files", []),
+    }
