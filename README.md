@@ -883,6 +883,52 @@ platform default — `encoding=` on every text call, and `newline=` on every
 write-mode `open()` — rather than waiting for a fifth bug report. Reads are
 deliberately left translated, which is what lets a hand-edited CRLF file parse.
 
+## Stability
+
+The version is 0.1.0 and semver promises nothing before 1.0, which is a poor
+answer for anyone who already has a `.issues/` directory of their own. So here
+is the specific one, group by group. Once there is a 1.0 these are what the
+major version will cover; until then they are kept anyway, and a break in one
+of them is a bug rather than a minor release.
+
+**The file format is stable, and another tool may read and write
+`.issues/*.md` directly.** That is what "the files are the database" has to
+mean to be worth anything. The named fields keep their names and meanings, an
+absent field stays absent rather than acquiring a default, and unknown
+frontmatter keys survive a rewrite — which is real forward compatibility, and
+the reason there is no `format_version` key here. There will not be one until
+the format changes in a way that preservation cannot absorb; a version key
+added before then is a promise bought before it is needed. Writing by hand or
+by another tool has the same rules the CLI holds itself to: one printable line
+per value, no comma inside `labels` or `blocked_by`, `evidence` a JSON array,
+UTF-8 and LF. `issue check` is the conformance test, and `tests/fixtures/` is
+the frozen corpus behind it (ISS-049) — a second published one waits for the
+first outside tool that asks.
+
+**The exit codes are stable.** A filter matching nothing is 0; a lookup
+finding nothing is 1; a refused or partly refused write is 1. Scripts branch
+on these before they read a byte of output.
+
+**The `--json` shapes are stable in what they contain, not in what they
+omit.** Existing keys keep their names and types, and every documented key is
+always present — empty rather than missing, so nothing has to branch on
+whether a key exists. New keys may appear, so parse by key and ignore what you
+do not know: the same rule the file format follows. `list` and `search` print
+an array, `view`, `next` and `brief` an object, `check` and `event` an array.
+stdout is only ever that JSON — every diagnostic goes to stderr — so a pipe
+into `jq` is safe.
+
+**The environment knobs are stable**: `ISSUES_DIR`, `ISSUE_PREFIX`,
+`ISSUE_USER`.
+
+**Not stable, and deliberately so:** the human table output — widths,
+ordering, wording — and every line on stderr, which is prose for a person and
+is expected to improve; the work plan and event log under `.issues/work/`,
+because the plan is seeded by the tool and rewritten by whoever does the work,
+and its reader is built to tolerate what it finds rather than to enforce a
+shape; and the Python modules, which are not a library — nothing here is
+importable API, the CLI is the interface.
+
 ## License
 
 MIT — see [LICENSE](LICENSE). `issue --version` prints the version, which is

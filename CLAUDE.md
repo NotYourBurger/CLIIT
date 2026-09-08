@@ -261,6 +261,11 @@ obvious from the code:
   register; don't strip it.
 - Deliberate shortcuts with a known ceiling are marked `ponytail:` with the
   upgrade path.
+- **Four things are promised to outsiders**, and README's Stability section is
+  where the promise is written: the frontmatter format, the `--json` shapes,
+  the exit codes and the three env knobs. Breaking one is a migration, not a
+  change; the human tables, the stderr prose, `.issues/work/` and every Python
+  module are explicitly not promised (ISS-051).
 
 ## Environment knobs
 
