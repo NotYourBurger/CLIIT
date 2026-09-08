@@ -30,6 +30,7 @@ issue next
 - [Quickstart: your first issue](#quickstart-your-first-issue)
 - [For AI coding agents: Claude Code, Codex, Cursor](#for-ai-coding-agents-claude-code-codex-cursor)
 - [Reporting a bug or asking a question](#reporting-a-bug-or-asking-a-question)
+- [Reporting a vulnerability](#reporting-a-vulnerability)
 - [Contributing](#contributing)
 - [Non-goals](#non-goals)
 - [Command reference](#command-reference)
@@ -249,12 +250,22 @@ file that already exists is an ordinary conflict when it is one at all. If your
 change needs an issue that does not exist yet, open the GitHub issue and it
 will be filed on trunk before your pull request lands.
 
+## Reporting a vulnerability
+
+**Not on the tracker above.** Email the address in
+[SECURITY.md](SECURITY.md), which also says what counts as a vulnerability in
+a tool with no server and no privileges of its own - and what does not,
+because most of the surprising behaviour here is in [Non-goals](#non-goals)
+on purpose.
+
 ## Contributing
 
 [CONTRIBUTING.md](CONTRIBUTING.md) is the rest of it: setup, the work loop as
 commands you can run, the commit convention, what a test looks like here, and
 the things deliberately not in this repo - no linter, no formatter, no test
 framework - so nobody adds one helpfully.
+[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) is the Contributor Covenant, and the
+address in it is read.
 
 ## Non-goals
 

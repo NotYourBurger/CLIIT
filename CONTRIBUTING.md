@@ -12,7 +12,7 @@ of them are cheaper to read here than to discover in review.
 Nothing below is repeated in either of those. If the two ever disagree with
 this file, they win and this file is the bug.
 
-## Two things to know before you open a pull request
+## Three things to know before you open a pull request
 
 **Bugs and questions go to [GitHub
 Issues](https://github.com/NotYourBurger/cli-issue-tracker/issues)**, not to a
@@ -25,6 +25,11 @@ merges them with nothing to show you. If your change needs an issue that does
 not exist yet, open the GitHub issue and it will be filed on trunk first.
 README's [Reporting a bug or asking a
 question](README.md#reporting-a-bug-or-asking-a-question) has the reasoning.
+
+**A vulnerability does not go to GitHub Issues either.**
+[SECURITY.md](SECURITY.md) has the private address and the list of what counts
+as one here. Everything else about how people are expected to behave is
+[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## Setup
 

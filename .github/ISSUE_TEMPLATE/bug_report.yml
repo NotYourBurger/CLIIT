@@ -1,0 +1,53 @@
+name: Bug report
+description: Something the tool does that it should not, or does not do that it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is the door — no clone, no fork and no issue id needed. What
+        arrives here gets filed as a `.issues/ISS-NNN.md` on trunk and this
+        issue is closed naming that id, so it is tracked in one place.
+
+        **Found a security problem?** Do not file it here — see
+        [SECURITY.md](https://github.com/NotYourBurger/cli-issue-tracker/blob/main/SECURITY.md).
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: The command you ran and what it did. Paste the output, including anything on stderr.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `issue --version`.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS and Python
+      description: >
+        The write lock forks on platform, filename lookup is case-blind on
+        Windows only, and the default encoding is not UTF-8 everywhere — so
+        which machine this is on is half the report.
+      placeholder: "Windows 11, Python 3.13"
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: >
+        A `.issues/*.md` file that triggers it, if there is one. Whether
+        `issue check` says anything.

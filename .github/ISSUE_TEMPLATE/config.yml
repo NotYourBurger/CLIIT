@@ -1,0 +1,7 @@
+# Blank issues stay on: a question is the other half of what this door is for,
+# and a question does not need a form.
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/NotYourBurger/cli-issue-tracker/blob/main/SECURITY.md
+    about: Do not file it publicly. SECURITY.md has the private address.
