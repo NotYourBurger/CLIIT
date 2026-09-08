@@ -30,6 +30,7 @@ issue next
 - [Quickstart: your first issue](#quickstart-your-first-issue)
 - [For AI coding agents: Claude Code, Codex, Cursor](#for-ai-coding-agents-claude-code-codex-cursor)
 - [Reporting a bug or asking a question](#reporting-a-bug-or-asking-a-question)
+- [Contributing](#contributing)
 - [Non-goals](#non-goals)
 - [Command reference](#command-reference)
 - [Closing](#closing)
@@ -247,6 +248,13 @@ with no conflict to show you - the one failure here that is silent. Editing a
 file that already exists is an ordinary conflict when it is one at all. If your
 change needs an issue that does not exist yet, open the GitHub issue and it
 will be filed on trunk before your pull request lands.
+
+## Contributing
+
+[CONTRIBUTING.md](CONTRIBUTING.md) is the rest of it: setup, the work loop as
+commands you can run, the commit convention, what a test looks like here, and
+the things deliberately not in this repo - no linter, no formatter, no test
+framework - so nobody adds one helpfully.
 
 ## Non-goals
 
