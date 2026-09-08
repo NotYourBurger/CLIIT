@@ -97,8 +97,12 @@ def search(
     search_issues(query, status, priority, label, as_json)
     
 @app.command("init")
-def init_project():
-    init()
+def init_project(
+    agents: bool = typer.Option(
+        False, "--agents", help="Write AGENTS.md if the repo has no agent instructions file"
+    ),
+):
+    init(agents)
 
 @app.command("view")
 def view(id, as_json: bool = typer.Option(False, "--json", help="Print the issue as JSON")):

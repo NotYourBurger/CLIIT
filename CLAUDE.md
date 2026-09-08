@@ -88,7 +88,14 @@ same None for a stray note, and that skip is what keeps the note out of
 and `storage.parse_fields` / `missing_fields` exist so the finding can name
 the field without a second copy of the rule);
 `convert_id.py` (id allocation) and `init.py`, which imports `plan.rule_text`
-to write the workflow rule into `CLAUDE.md` / `AGENTS.md`.
+to write the workflow rule into `CLAUDE.md` / `AGENTS.md`, next to its own
+`TOOLS` block naming the tracker and four verbs. That block is not part of
+`RULE`: `RULE[4:8]` is repeated in every seeded plan, where the reader is
+already inside the tool, so a line about which command to type would leak into
+all of them. When the repo keeps neither file nothing is written - which file a
+repo gives its agents is that repo's call - but it is said on stderr rather
+than decided in silence, and `--agents` writes `AGENTS.md` for anyone who wants
+one (ISS-044).
 
 Nothing imports `issues.py`. If something wants to, the thing it wants belongs
 in a lower layer — and Python raises on the cycle, so the suite says so at

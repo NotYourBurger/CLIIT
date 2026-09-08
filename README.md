@@ -434,7 +434,13 @@ mistyped one gets told which words `set` accepts instead of being written.
 Every command except `init` finds `.issues/` by walking up from the current
 directory, the way `git` finds `.git`, so they all work from anywhere in the
 repo. `init` is deliberately local — it creates `.issues/` right where you are,
-and warns if there is already one above it. Set `ISSUES_DIR` to point the tool at
+and warns if there is already one above it. It also appends two sections to
+whichever of `CLAUDE.md` and `AGENTS.md` the repo already keeps: the workflow
+rule, and a short block naming the tracker and the four verbs an agent needs.
+Both are appended once and never overwrite what is there. If the repo keeps
+neither file, `init` says so on stderr and writes nothing — which file a repo
+gives its agents is that repo's decision — and `issue init --agents` writes
+`AGENTS.md` when you want one. Set `ISSUES_DIR` to point the tool at
 a specific directory and skip the walk entirely.
 
 `ISSUE_USER` is the third environment knob: it is who `issue claim` acts as
@@ -579,9 +585,10 @@ Nothing enforces any of this. A seeded plan that is never ticked is worse than
 no plan — it is confidently stale and the next agent believes it. What changes
 the odds is that the plan is created before the work, is edited with the tool
 the agent is already holding, and carries its own instructions: `issue init`
-writes the nine-line workflow rule into `CLAUDE.md` or `AGENTS.md`, and every
-seeded plan repeats the four lines that matter mid-session as an HTML comment
-at the top of the file. Both come from one constant in the source.
+writes the nine-line workflow rule into `CLAUDE.md` or `AGENTS.md` — next to
+the block naming the commands that run it — and every seeded plan repeats the
+four lines that matter mid-session as an HTML comment at the top of the file.
+The rule's two renderings come from one constant in the source.
 
 ## Event log
 
