@@ -95,6 +95,13 @@ knowing:
   refuses the word and says so. Everything is validated before the write, and
   the "ISS-012 is now ready" cascade lives there, because closing is now the
   only thing that frees a blocked issue.
+- `start_issue()` writes no field of its own. Its status-and-assignee write is
+  one `set_fields` call, so the reopen-clearing ISS-034 put there - and every
+  later rule about what changing a status means - reaches `start` too. It was
+  the one verb calling `write_issue` for those fields and it disagreed with all
+  of them: it reassigned someone else's issue silently and turned a closed one
+  in-progress with its resolution still attached. It refuses both now, and
+  `--take` is either decision made out loud (ISS-041).
 - `rank` (list, least-urgent-first so the terminal reads bottom-up) and
   `next_rank` (`next`, most-urgent-first) are the same `STATUSES` / `PRIORITIES`
   tuples read in opposite directions. `next_rank` breaks every tie down to the

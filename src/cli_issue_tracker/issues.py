@@ -458,19 +458,41 @@ def said_path(path):
     return path if relative.startswith("..") else relative
 
 
-def start_issue(id, anyway=False, compact=False):
+def start_issue(id, anyway=False, compact=False, take=False):
     """Open work on one issue: set it in-progress, claim it, and put the plan
     file in front of the agent.
 
     One command whether the work is new or being resumed, because an agent that
     first has to work out which situation it is in will sometimes work it out
     wrongly, and the cost of being wrong is the plan. Seed if absent, print if
-    present - never reseed."""
+    present - never reseed.
+
+    It is also a claim, and so it can fail the way `claim` does: someone else's
+    issue is refused by name, and a closed one is refused too, because
+    reopening finished work is a real transition and not a side effect of
+    typing a nearby id. `--take` is either decision made out loud - one flag
+    and not two, since taking a closed issue *is* reopening it and an issue
+    that is both alice's and done is one fact to overrule. `--anyway` stays
+    about blockers alone: an agent that passes it out of habit must not be
+    reassigning people's work with it (ISS-041)."""
     by_id = {issue["id"]: issue for issue in load_issues()}
     issue = by_id.get(id)
     if issue is None:
         print(f"Issue {id} Was Not Found", file=sys.stderr)
         sys.exit(1)
+
+    # Before the blocker check: what is in the way of a closed or someone
+    # else's issue is not its blockers, and naming those first sends the reader
+    # to the wrong file.
+    who = current_user().strip()
+    owner = issue.get("assignee")
+    if not take:
+        if issue["status"] == "closed":
+            print(f"{id} is closed - pass --take to reopen it and start it", file=sys.stderr)
+            sys.exit(1)
+        if not claimable_by(issue, who):
+            print(f"{id} is already {owner}'s - pass --take to take it over", file=sys.stderr)
+            sys.exit(1)
 
     # Discouraged, not forbidden: the blocker may well not stop this
     # particular work, and only the person looking at both can say. Refusing
@@ -486,11 +508,17 @@ def start_issue(id, anyway=False, compact=False):
         )
         sys.exit(1)
 
-    issue["status"] = "in-progress"
-    who = current_user()
-    if who:
-        issue["assignee"] = who
-    write_issue(issue)
+    # Through `set_fields` and not `write_issue`: it is the one function that
+    # holds what writing a status means, so the resolution-clearing ISS-034 put
+    # there covers this path too, and the next rule added there is a rule
+    # `start` gets. Writing the file directly is how this verb came to disagree
+    # with every other one. quiet, because the lines around it are the report;
+    # `assignee=None` leaves the field alone when there is no name to write.
+    if issue["status"] == "closed":
+        print(f"{id} was closed - reopening it, and its resolution goes with it")
+    if owner and owner != who and who:
+        print(f"{id} taken from {owner}")
+    set_fields([id, "in-progress"], assignee=who or None, quiet=True)
 
     # Read before written: an existing plan is the only copy of everything the
     # last session worked out, and reseeding on top of it is the one

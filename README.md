@@ -56,6 +56,7 @@ issue log ISS-001                   # the issue's git history: who changed it, w
 issue start ISS-042                 # open the work, or pick it back up where it stopped
 issue start ISS-042 --compact       # resume with a bounded plan summary
 issue start ISS-042 --anyway        # start it even though something blocks it
+issue start ISS-042 --take          # ...even though it is someone else's, or closed
 issue event ISS-042 "worker started, 0 tool calls" --type lifecycle
 issue event ISS-042 --type probe --stdin < probe.log   # pipe stdout in instead of quoting it
 issue event ISS-042                 # print what has been recorded so far
@@ -491,6 +492,16 @@ reseeding it — an existing plan is never clobbered, truncated or overwritten,
 so an agent never has to work out first whether work exists. It refuses a
 blocked issue, naming the blockers and writing nothing; `--anyway` starts it
 regardless and records in the plan header that the call was made.
+
+`start` is a claim as well, so it can fail the way `claim` does. It refuses an
+issue that is already someone else's, naming the owner, and refuses a closed
+one — an agent that mistypes an id must not silently take a colleague's work
+off them or reopen finished work on the way to writing a plan file. `--take`
+is either of those decisions made out loud: it reassigns the issue and says
+whose it was, and it reopens a closed one, dropping the resolution with it the
+same way `issue set ISS-042 open` does. One flag rather than two, because
+taking a closed issue *is* reopening it. `--anyway` stays about blockers alone,
+so an agent passing it out of habit is not also reassigning people's work.
 
 For repeated reads in a session that already has context, use
 `issue start ISS-042 --compact` or `issue next --compact`. The summary shows

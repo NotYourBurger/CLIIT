@@ -306,6 +306,24 @@ def demo():
             code, out, err = run(view_issue, "ISS-004", as_json=True)
             assert "plan" not in json.loads(out), out
 
+            # `start` is a claim, and a claim is the one ownership verb that can
+            # fail. Someone else's issue is refused by name rather than quietly
+            # reassigned: an agent starting a mistyped id must not take alice's
+            # work off her, silently, in a command whose subject is a plan file.
+            run(set_fields, ["ISS-004"], assignee="alice")
+            code, out, err = run(start_issue, "ISS-004")
+            assert code == 1 and out == "", (code, out, err)
+            assert "alice" in err, err
+            assert read_issue("ISS-004")["status"] == "open", "a refused start moved the status"
+            assert not os.path.isfile(plan_path("ISS-004")), "a refused start wrote a plan"
+
+            # --take is that same decision made out loud, and it says whose work
+            # it took - the line the refusal would have printed, after the fact.
+            code, out, err = run(start_issue, "ISS-004", take=True)
+            assert code is None, (code, out, err)
+            assert "alice" in out, out
+            assert read_issue("ISS-004")["assignee"] == "tester", read_issue("ISS-004")
+
             # Closing with checkpoints still open warns and closes anyway. A
             # checkpoint that stopped being relevant must not be able to veto a
             # close, and the acceptance criteria already own completeness - so
@@ -323,6 +341,28 @@ def demo():
             # issue was actually built, which is worth more after the close
             # than during it.
             assert os.path.isfile(plan_path("ISS-001")), "close moved the plan"
+
+            # close -> start -> inspect, the mirror of close -> reopen ->
+            # inspect in test_close.py. Finished work is refused first:
+            # reopening is a real transition and not something a nearby id
+            # should be able to do on the way to writing a plan file.
+            code, out, err = run(start_issue, "ISS-001")
+            assert code == 1 and out == "", (code, out, err)
+            assert "closed" in err, err
+            assert read_issue("ISS-001")["status"] == "closed"
+
+            # And when it is asked for, it reopens cleanly. `start` writes the
+            # status through the same function `set` does, so the four fields
+            # ISS-034 taught that function to drop go with it - rather than the
+            # exact file ISS-034 was filed to make impossible: an in-progress
+            # issue carrying proof that it was completed.
+            code, out, err = run(start_issue, "ISS-001", take=True)
+            assert code is None, (code, out, err)
+            restarted = read_issue("ISS-001")
+            assert restarted["status"] == "in-progress", restarted
+            assert not {"reason", "closed_at", "message", "evidence"} & set(restarted), restarted
+            code, out, err = run(view_issue, "ISS-001")
+            assert "Resolution" not in out, out
         finally:
             os.environ.pop("ISSUES_DIR", None)
             os.environ.pop("ISSUE_USER", None)

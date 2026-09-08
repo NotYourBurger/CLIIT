@@ -73,8 +73,9 @@ def start(
     id: str,
     anyway: bool = typer.Option(False, "--anyway", help="Start it even though something blocks it"),
     compact: bool = typer.Option(False, "--compact", help="Summarize the plan for a session that already has context"),
+    take: bool = typer.Option(False, "--take", help="Take it over from its owner, and reopen it if it is closed"),
 ):
-    start_issue(id, anyway, compact)
+    start_issue(id, anyway, compact, take)
 
 
 # The question before `next`: not "what do I do" but "what is going on here".
