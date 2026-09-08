@@ -30,6 +30,7 @@ issue brief                         # what is happening in this project
 issue brief --json                  # the same orientation, for an agent
 issue next                          # the one issue to work on now
 issue next --json                   # the same decision, for an agent
+issue next --compact                # bounded plan summary for repeated reads
 issue next --claim                  # ...and take it, retrying if the claim is lost
 issue search "verification email"   # every issue whose body or title has both words
 issue search auth --status open -p high   # the same filters list takes, ANDed with the query
@@ -53,6 +54,7 @@ issue check --json                  # the same findings, for an agent
 issue check --plans                 # how much each work plan is actually kept
 issue log ISS-001                   # the issue's git history: who changed it, when, why
 issue start ISS-042                 # open the work, or pick it back up where it stopped
+issue start ISS-042 --compact       # resume with a bounded plan summary
 issue start ISS-042 --anyway        # start it even though something blocks it
 ```
 
@@ -472,6 +474,20 @@ so an agent never has to work out first whether work exists. It refuses a
 blocked issue, naming the blockers and writing nothing; `--anyway` starts it
 regardless and records in the plan header that the call was made.
 
+For repeated reads in a session that already has context, use
+`issue start ISS-042 --compact` or `issue next --compact`. The summary shows
+checkpoint counts, at most three pending checkpoints, Current and Next, and the
+path to the full plan. Each checkpoint and state field is flattened to one line
+of at most 160 characters; `...` marks shortened text. Extra pending checkpoints
+and omitted decisions/discoveries are counted explicitly. Compact `next` omits
+git details. Paths and issue metadata are not truncated.
+
+The complete plan stays on disk. For a fresh session recovering interrupted work,
+read that file or omit `--compact` to get the full decisions and discoveries.
+Existing JSON remains complete; `next --compact --json` is rejected before any
+claim. This reduces repeated command output, not the size of agent-written plan
+edits, and character savings are not a model-specific token or usage-limit guarantee.
+
 Reading it back is `issue next`, which already names the right issue and now
 says what was happening there:
 
@@ -683,6 +699,7 @@ file per thing that can break:
 | `test_next.py`       | the `next` ranking, every tie-breaker, ownership, empty case |
 | `test_close.py`      | closing: the reasons, the evidence rule, and what it refuses |
 | `test_plan.py`       | seeding, resuming, the blocked refusal, and a mangled plan  |
+| `test_compact.py`    | bounded active-plan output, CLI flags, and full-record preservation |
 | `test_check.py`      | `issue check`, against files the tool did not write, and the real `.issues/` |
 | `test_convert_id.py` | id allocation, including independent prefix sequences         |
 | `test_encoding.py`   | that nothing reads or writes text at the platform default   |

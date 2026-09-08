@@ -223,6 +223,37 @@ def as_dict(issue, by_id):
     return dumped
 
 
+PLAN_TEXT_CAP = 160
+PLAN_PENDING_CAP = 3
+
+
+def compact_plan_lines(plan):
+    """A bounded reminder for a session that already has the rationale.
+
+    Omission is explicit: a shorter view must not look like the entire record.
+    Callers add the full plan's path, which is navigation and cannot safely be
+    shortened to fit a character budget.
+    """
+    def short(text):
+        line = " ".join(text.split())
+        return line if len(line) <= PLAN_TEXT_CAP else line[:PLAN_TEXT_CAP - 3] + "..."
+
+    points = plan.get("checkpoints", [])
+    pending = [point for point in points if not point["done"]]
+    lines = [f"PLAN  {len(points) - len(pending)}/{len(points)}"]
+    lines += [f"- [ ] {short(point['text'])}" for point in pending[:PLAN_PENDING_CAP]]
+    if len(pending) > PLAN_PENDING_CAP:
+        lines.append(f"+{len(pending) - PLAN_PENDING_CAP} more pending checkpoints")
+    for key in ("current", "next"):
+        if plan.get(key):
+            lines.append(f"{key.capitalize()}: {short(plan[key])}")
+    decisions = len(plan.get("decisions", []))
+    discoveries = len(plan.get("discoveries", []))
+    if decisions or discoveries:
+        lines.append(f"In full plan: {decisions} decisions, {discoveries} discoveries")
+    return lines
+
+
 def plan_lines(plan):
     """Where the work stands, for a human. Every block is skipped when it is
     empty, so a freshly seeded plan renders as nothing at all rather than as

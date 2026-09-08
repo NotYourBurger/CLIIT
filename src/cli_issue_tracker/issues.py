@@ -61,6 +61,7 @@ from cli_issue_tracker.render import THEME
 from cli_issue_tracker.render import as_dict
 from cli_issue_tracker.render import brief_rows
 from cli_issue_tracker.render import console
+from cli_issue_tracker.render import compact_plan_lines
 from cli_issue_tracker.render import describe
 from cli_issue_tracker.render import next_lines
 from cli_issue_tracker.render import omitted
@@ -326,7 +327,7 @@ def ranked_actionable(issues, by_id):
     return sorted((issue for issue in issues if actionable(issue, by_id)), key=next_rank)
 
 
-def next_issue(as_json=False, claim=False):
+def next_issue(as_json=False, claim=False, compact=False):
     """The one issue to work on now, and nothing else - `issue list --ready`
     hands back a table and leaves the last step to the caller, which for an
     agent is a backlog scan and a paragraph of reasoning to re-derive a
@@ -343,6 +344,9 @@ def next_issue(as_json=False, claim=False):
     asked for a row it could start is owed one, and a `--claim` that gives up
     on the first collision is worth no more than the plain `next` it
     replaced."""
+    if compact and as_json:
+        print("--compact and --json cannot be combined; JSON retains the full plan", file=sys.stderr)
+        sys.exit(1)
     issues, by_id = select_issues()
     candidates = ranked_actionable(issues, by_id)
 
@@ -425,7 +429,10 @@ def next_issue(as_json=False, claim=False):
         return
 
     lines = next_lines(issue, by_id)
-    if plan:
+    if plan and compact:
+        lines += [""] + compact_plan_lines(plan)
+        lines.append(f"Full plan: {said_path(plan_path(issue['id']))}")
+    elif plan:
         git, files = git_context()
         for block in (git_lines(git, files), plan_lines(plan)):
             if block:
@@ -446,7 +453,7 @@ def said_path(path):
     return path if relative.startswith("..") else relative
 
 
-def start_issue(id, anyway=False):
+def start_issue(id, anyway=False, compact=False):
     """Open work on one issue: set it in-progress, claim it, and put the plan
     file in front of the agent.
 
@@ -487,7 +494,7 @@ def start_issue(id, anyway=False):
     path = plan_path(id) if plan else write_plan(id, issue["title"], stuck)
     print(f"{id} is in progress - plan at {said_path(path)}")
     if plan:
-        lines = plan_lines(plan)
+        lines = compact_plan_lines(plan) if compact else plan_lines(plan)
         if lines:
             print("\n".join(lines))
 
