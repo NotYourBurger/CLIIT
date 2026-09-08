@@ -747,6 +747,7 @@ file per thing that can break:
 | `test_close.py`      | closing: the reasons, the evidence rule, and what it refuses |
 | `test_plan.py`       | seeding, resuming, the blocked refusal, and a mangled plan  |
 | `test_compact.py`    | bounded active-plan output, CLI flags, and full-record preservation |
+| `test_events.py`    | the append-only log: what it refuses, and what a bad line costs |
 | `test_check.py`      | `issue check`, against files the tool did not write, and the real `.issues/` |
 | `test_convert_id.py` | id allocation, including independent prefix sequences         |
 | `test_encoding.py`   | that nothing reads or writes text at the platform default   |
