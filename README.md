@@ -816,7 +816,7 @@ two things they all wanted: `run()`, which calls a command and hands back its
 exit code, stdout and stderr, and `REPO`.
 
 `.github/workflows/ci.yml` runs that same script on every push and pull
-request, across Linux, macOS and Windows on Python 3.11, 3.12 and 3.13. The
+request, across Linux, macOS and Windows on Python 3.10 through 3.13. The
 matrix is the point rather than the redundancy: `storage.locked` takes a
 different branch per platform, `file_by_id` is case-blind on Windows and
 case-sensitive everywhere else, and the UTF-8 and LF pinning exists because

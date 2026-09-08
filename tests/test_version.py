@@ -9,7 +9,11 @@ produced is a check that cannot fail.
 
 import os
 import sys
-import tomllib
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # 3.10, the floor - see demo()
+    tomllib = None
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -25,18 +29,30 @@ def pyproject():
 
 
 def demo():
-    project = pyproject()
-
-    result = CliRunner().invoke(app, ["--version"])
-    assert result.exit_code == 0, result.output
-    assert project["version"] in result.output, result.output
-
     # The installed distribution, not just the source tree - importlib.metadata
     # reads what the build backend wrote, so a version bumped in one place and
     # not the other is exactly what this catches.
     from importlib.metadata import version
 
-    assert version("cli-issue-tracker") == project["version"]
+    installed = version("cli-issue-tracker")
+
+    result = CliRunner().invoke(app, ["--version"])
+    assert result.exit_code == 0, result.output
+    assert installed in result.output, result.output
+
+    # pyproject is the second, independent source. tomllib is 3.11 and the
+    # floor is 3.10 (ISS-048), so on the floor there is no TOML reader in the
+    # stdlib. What is above is what an interpreter can be wrong about - the
+    # flag wired to the metadata the build wrote - and what is below is a
+    # question about the file, which the other three rows of the matrix
+    # answer. Cheaper than this file growing a TOML parser to ask it a fourth
+    # time.
+    if tomllib is None:
+        print("ok (no tomllib)")
+        return
+
+    project = pyproject()
+    assert installed == project["version"]
 
     # The other half of ISS-046, and the half with the legal consequence: a
     # repo with no LICENSE reads as all rights reserved however public it is.
