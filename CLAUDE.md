@@ -43,7 +43,13 @@ change:
   them: `priority_of` returns `-`, and they match no `--priority` filter. An
   emptied field is popped, not written as `labels:`.
 - **git is the audit trail.** `issue log` is `git log --follow` on the file. No
-  history is stored in the tool.
+  history is stored in the tool. Six places shell out, all through
+  `storage.run_git`, and none of them is allowed to fail the command it is
+  inside: a machine with no git installed is the same absent answer as a
+  directory that is not a repo, and `require_commits` skips for both for the
+  one reason it was written for — nothing outside this repo may be on the path
+  to closing an issue (ISS-043). It is in `storage.py` and not `plan.py`
+  because `fields.current_user` is one of the six and sits below it.
 
 ## Architecture
 
@@ -52,7 +58,8 @@ layers under them, imported in this order and never the other way:
 `storage.py` (locating `.issues/`, the frontmatter format: `split_file` /
 `join_file`, with `parse_issue` / `write_issue` as the issue-shaped wrapper
 around them - `parse_issue` being `parse_fields` plus `missing_fields`, split
-so `check` can say which required field a file has not got, the body format: `split_sections`, and the write lock: `locked`) → `fields.py` (reading one
+so `check` can say which required field a file has not got, the body format: `split_sections`, the write lock: `locked`, and the one
+read-only git call: `run_git`) → `fields.py` (reading one
 parsed issue, and the status/priority tuples) → `deps.py` (what blocks what) →
 `plan.py` (what a work plan is: the workflow rule, the seed, the reader, and
 `git_context`) → `validate.py` (every check that exits before a write) →
@@ -144,7 +151,9 @@ written. The rules that are not obvious from the code:
 - **The reader is built not to need the shape enforced.** `read_plan` never
   raises, ignores headings it does not know, treats a missing section as absent
   rather than empty, and notes an unrecognisable file on stderr instead of
-  failing. `bullets` rejoins a wrapped bullet, because a decision worth
+  failing — including one that is not UTF-8, which is read with
+  `errors="replace"` and named on stderr, because this tool wrote only the
+  seed and an agent wrote the rest (ISS-043). `bullets` rejoins a wrapped bullet, because a decision worth
   recording is a sentence and a truncated sentence loses the half with the
   reason in it.
 - **Git is recomputed at read time and never stored.** The opposite of the

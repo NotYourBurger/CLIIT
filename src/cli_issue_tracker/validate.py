@@ -10,7 +10,6 @@ strings and no value may contain a comma. `evidence` is the documented
 exception and holds JSON instead, which is why it is checked elsewhere.
 """
 
-import subprocess
 import sys
 
 from cli_issue_tracker.fields import PRIORITIES
@@ -18,6 +17,7 @@ from cli_issue_tracker.fields import STATUSES
 from cli_issue_tracker.fields import blockers_of
 from cli_issue_tracker.deps import cycle_from
 from cli_issue_tracker.storage import read_issue
+from cli_issue_tracker.storage import run_git
 
 
 # Named rather than repr'd for the three that get typed by accident, because
@@ -146,23 +146,18 @@ def require_commits(shas):
     evidence is still worth recording, and network access must never be on the
     path to closing an issue. `git cat-file -e` answers 128 for both "no repo"
     and "no such object", so the repo test comes first; that is also how
-    log_issue treats git having nothing to say."""
+    log_issue treats git having nothing to say. A machine with no git on it
+    answers the same way through `run_git` and takes the same skip - the
+    reasoning about the network is exactly the reasoning about the binary."""
     if not shas:
         return
-    repo = subprocess.run(
-        ["git", "rev-parse", "--git-dir"], capture_output=True, text=True, encoding="utf-8"
-    )
+    repo = run_git("rev-parse", "--git-dir")
     if repo.returncode:
         return
     for sha in shas:
         # ^{commit} so a tree or a blob that happens to share the prefix is not
         # accepted as the implementation.
-        found = subprocess.run(
-            ["git", "cat-file", "-e", f"{sha}^{{commit}}"],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-        )
+        found = run_git("cat-file", "-e", f"{sha}^{{commit}}")
         if found.returncode:
             print(f"No commit {sha} in this repository", file=sys.stderr)
             sys.exit(1)

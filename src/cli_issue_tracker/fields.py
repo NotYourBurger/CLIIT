@@ -8,7 +8,7 @@ and the setters elsewhere pop rather than write an empty line.
 
 import json
 import os
-import subprocess
+from cli_issue_tracker.storage import run_git
 import sys
 
 
@@ -69,10 +69,7 @@ def current_user():
     who = os.environ.get("ISSUE_USER", "").strip()
     if who:
         return who
-    git = subprocess.run(
-        ["git", "config", "user.name"], capture_output=True, text=True, encoding="utf-8"
-    )
-    return git.stdout.strip()
+    return run_git("config", "user.name").stdout.strip()
 
 
 def set_field(issue, field):

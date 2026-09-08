@@ -15,7 +15,6 @@ wants belongs in a lower one.
 
 import json
 import os
-import subprocess
 import sys
 
 
@@ -77,6 +76,7 @@ from cli_issue_tracker.storage import locked
 from cli_issue_tracker.storage import now
 from cli_issue_tracker.storage import parse_issue
 from cli_issue_tracker.storage import read_issue
+from cli_issue_tracker.storage import run_git
 from cli_issue_tracker.storage import write_issue
 from cli_issue_tracker.plan import git_context
 from cli_issue_tracker.plan import plan_path
@@ -1216,8 +1216,7 @@ def log_issue(id):
     # --reverse, so the newest commit is the line left at the prompt: a long
     # history otherwise scrolls the commit you came for off the top and leaves
     # the initial filing under the cursor. It works with --follow.
-    git = [
-        "git",
+    result = run_git(
         "log",
         "--follow",
         "--reverse",
@@ -1225,10 +1224,11 @@ def log_issue(id):
         "--format=%h  %ad  %s",
         "--",
         file_path,
-    ]
-    result = subprocess.run(git, capture_output=True, text=True, encoding="utf-8")
+    )
     if result.returncode != 0:
-        # Not a git repo, or the file is outside it - git already said which.
+        # Not a git repo, the file is outside it, or there is no git on this
+        # machine at all - git, or `run_git` standing in for it, already said
+        # which.
         print(result.stderr.strip() or "git log failed", file=sys.stderr)
         sys.exit(1)
     if not result.stdout.strip():
@@ -1241,11 +1241,6 @@ def log_issue(id):
 
     # Edits that are not committed yet are invisible above. Say so on stderr,
     # so it is a note to the reader and not a row to whatever is parsing stdout.
-    pending = subprocess.run(
-        ["git", "status", "--porcelain", "--", file_path],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-    )
+    pending = run_git("status", "--porcelain", "--", file_path)
     if pending.stdout.strip():
         print(f"({id} has uncommitted changes, not shown above)", file=sys.stderr)

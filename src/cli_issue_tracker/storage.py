@@ -1,6 +1,7 @@
 import contextlib
 import os
 import re
+import subprocess
 import sys
 import tempfile
 from datetime import datetime
@@ -32,6 +33,34 @@ REQUIRED = ("id", "status", "created_at", "title")
 class Busy(Exception):
     """The tracker lock is held by another process, and the caller asked not to
     wait for it. Only a non-blocking `locked()` raises this."""
+
+def run_git(*args, cwd=None):
+    """One read-only git call, as a CompletedProcess. Never raises.
+
+    Six places shell out to git and every one of them already handles git
+    saying no - not a repo, no such object, nothing to report - by dropping
+    the block that needed it. None of them handled git not being there, and
+    `subprocess.run` raises before their handling gets a turn, so a container
+    or a stripped image turned "the audit trail is unavailable" into a
+    traceback out of a command that had something else to print (ISS-043).
+
+    A machine with no git is the same absence as a directory that is not a
+    repo, so it is answered the same way rather than by six copies of the same
+    catch: a non-zero return code with git's own reason on stderr. 128 because
+    that is what git itself answers for "cannot do this here", and callers that
+    tell the two apart are reading stderr, which says which this was.
+
+    It lives at this layer because it has callers under `fields.py`, and this
+    is the floor everything can import. `text=True` needs `encoding` spelled
+    out for the reason every `open()` here does - the locale default is cp1252
+    on this machine and turns an accented author into mojibake at exit 0."""
+    try:
+        return subprocess.run(
+            ["git", *args], capture_output=True, text=True, encoding="utf-8", cwd=cwd
+        )
+    except FileNotFoundError:
+        return subprocess.CompletedProcess(args, 128, "", "git is not installed")
+
 
 def id_prefix() -> str:
     """The letters in front of every id. One source, read by next_id when it

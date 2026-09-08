@@ -24,10 +24,10 @@ reader here is built not to need it.
 """
 
 import os
-import subprocess
 import sys
 
 from cli_issue_tracker.storage import require_issue_dir
+from cli_issue_tracker.storage import run_git
 from cli_issue_tracker.storage import split_sections
 from cli_issue_tracker.storage import write_atomic
 
@@ -184,12 +184,23 @@ def read_plan(id: str):
 
     A file with nothing recognisable in it is still a plan - it is the agent's
     file - so this says so on stderr and returns what it found, rather than
-    returning None and having `start` reseed on top of it."""
+    returning None and having `start` reseed on top of it.
+
+    Including a file that is not UTF-8. This tool writes the seed and an agent
+    writes everything after it, so the bytes here are not necessarily ours: a
+    truncated write (ISS-038), an editor saving latin-1, a paste through a bad
+    terminal. `errors="replace"` because the three answers are crash, mangle
+    silently and surface - and the plan is somebody's only copy of where the
+    work stands, so the U+FFFD is left in the returned text to be read around
+    and the path is named on stderr for whoever can repair it."""
     path = plan_path(id)
     if not os.path.isfile(path):
         return None
-    with open(path, "r", encoding="utf-8") as md_file:
-        sections = split_sections(md_file.read())
+    with open(path, "r", encoding="utf-8", errors="replace") as md_file:
+        text = md_file.read()
+    if "�" in text:
+        print(f"{id}: {path} is not valid UTF-8 - re-save it as UTF-8", file=sys.stderr)
+    sections = split_sections(text)
 
     known = ("Plan",) + tuple(heading for _, heading, _ in SECTIONS)
     if not any(heading in sections for heading in known):
@@ -235,10 +246,12 @@ def git(*args, cwd=None):
     callers that want a single line strip it themselves.
 
     `cwd` because the repo is wherever `.issues/` was found, which is not
-    necessarily where the command was typed."""
-    done = subprocess.run(
-        ["git", *args], capture_output=True, text=True, encoding="utf-8", cwd=cwd
-    )
+    necessarily where the command was typed.
+
+    The call itself is `storage.run_git`, which is also what the callers that
+    need the return code rather than the stdout use - one place knows that a
+    missing binary is an absent answer and not an exception (ISS-043)."""
+    done = run_git(*args, cwd=cwd)
     return done.stdout if done.returncode == 0 else None
 
 
