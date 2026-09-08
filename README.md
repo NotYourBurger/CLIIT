@@ -637,15 +637,27 @@ is the doctor for that:
 | A duplicate id across files | The id map keeps only one file, hiding the other from commands and blocker lookups |
 | A blocker that is not here  | A missing id never blocks, so nothing has ever had a reason to mention the hole |
 | A status or priority nobody wrote | `issue next` drops an unknown status rather than raising, so the issue simply stops being offered |
+| A file named like an issue that is not one | It is skipped by every reader, so it vanishes from `list`, from `next` and from every count — the finding names the field it is missing |
+| A dependency cycle | `issue set` refuses to write one, but one that arrives by hand edit is permanent: neither issue is ever ready and nothing says why |
+| A filename that disagrees with its id | It lists and views fine under the id it claims, while `issue log` looks for a filename that is not there |
+| Evidence that is not a JSON array of typed objects | It is the one field holding JSON, it round trips saying anything at all, and a closed issue's proof reads back as no proof |
 | A work plan with no issue   | The plan is named after the issue and has no identity of its own |
 | An event log with no issue  | Same as above, for `.events.jsonl` |
 | A line in an event log that will not parse | An append reads back silently otherwise, wherever it is read |
 
 Clean is exit 0 and no output. Anything found is exit 1, one line each on
-stderr — or on stdout as JSON under `--json`. A hand-edited `labels: auth,
-sessions` is deliberately not checked: after the split it is indistinguishable
-from two labels, so it is undetectable by construction, and a check that
-pretends otherwise is worse than none.
+stderr — or on stdout as JSON under `--json`. A cycle is reported once, from
+the lowest id in it, with the path spelled out the way `issue set` already
+spells it: `ISS-002 waits on itself: ISS-002 -> ISS-003 -> ISS-002` names the
+edge to drop.
+
+Two things are deliberately not findings. A hand-edited `labels: auth,
+sessions`: after the split it is indistinguishable from two labels, so it is
+undetectable by construction, and a check that pretends otherwise is worse
+than none. And a `.md` in `.issues/` whose name is not an id — a note you keep
+beside the issues is not a broken issue, and the skip that keeps it out of
+`issue list` is the same skip that hides a broken `ISS-001.md`. The filename
+is the only thing separating the two, so the filename is what decides.
 
 ### `issue check --plans`
 

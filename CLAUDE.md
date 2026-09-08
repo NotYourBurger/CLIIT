@@ -51,7 +51,8 @@ change:
 layers under them, imported in this order and never the other way:
 `storage.py` (locating `.issues/`, the frontmatter format: `split_file` /
 `join_file`, with `parse_issue` / `write_issue` as the issue-shaped wrapper
-around them, the body format: `split_sections`, and the write lock: `locked`) → `fields.py` (reading one
+around them - `parse_issue` being `parse_fields` plus `missing_fields`, split
+so `check` can say which required field a file has not got, the body format: `split_sections`, and the write lock: `locked`) → `fields.py` (reading one
 parsed issue, and the status/priority tuples) → `deps.py` (what blocks what) →
 `plan.py` (what a work plan is: the workflow rule, the seed, the reader, and
 `git_context`) → `validate.py` (every check that exits before a write) →
@@ -69,7 +70,16 @@ written down in `docs/PRD/05-Work-Plan.md`. Its verdict column is
 whoever commits rather than whoever writes, and this workflow commits the plan
 edits at the end; it also flags an event log with no issue beside it and any
 line in one that will not parse as JSON, the same two questions it already
-asks of a work plan);
+asks of a work plan. ISS-042 added the four questions it could already answer
+and never asked: a dependency cycle (one `cycle_from` call, reported once from
+the lowest id in it), a filename that disagrees with the id inside it (both
+halves were already in `file_by_id`), evidence that is not a JSON array of
+typed objects, and a file whose *name* is an id and that does not parse. That
+last one is the only one with a decision in it - `parse_issue` returns the
+same None for a stray note, and that skip is what keeps the note out of
+`issue list` - so the filename is what separates a broken issue from a note,
+and `storage.parse_fields` / `missing_fields` exist so the finding can name
+the field without a second copy of the rule);
 `convert_id.py` (id allocation) and `init.py`, which imports `plan.rule_text`
 to write the workflow rule into `CLAUDE.md` / `AGENTS.md`.
 

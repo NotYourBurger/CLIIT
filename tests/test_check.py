@@ -58,6 +58,65 @@ priority: urgent
 """
 
 
+# Named like an issue, and not one. `parse_issue` returns None for a missing
+# required field exactly as it does for a stray note, and the skip is
+# load-bearing for the note - so the filename is what separates them.
+MISSING_STATUS = """---
+id: ISS-907
+created_at: x
+---
+
+# No status
+"""
+
+# A stray note in the directory. The skip that keeps this out of `issue list`
+# is the reason `parse_issue` returns None at all; a finding here would make
+# `check` unusable in any repo that keeps one.
+STRAY_NOTE = """Just a note. No frontmatter, no id, nobody's issue.
+"""
+
+
+def cycle_text(id, waits_on):
+    """Half a cycle. `require_blockers` refuses to write one; this is the pair
+    that arrives by hand-edit or by a merge."""
+    return f"""---
+id: {id}
+status: open
+created_at: x
+blocked_by: {waits_on}
+---
+
+# Waits on {waits_on}
+"""
+
+
+# The id inside disagrees with the name outside. It lists and views fine under
+# the id it claims, and `issue log ISS-911` looks for a file that is not there.
+MISNAMED = """---
+id: ISS-911
+status: open
+created_at: x
+---
+
+# Named one thing, is another
+"""
+
+
+def evidence_text(id, line):
+    """A closed issue whose evidence line is `line`. Closed on proof that
+    cannot be read is the one thing this tool refuses to do at the door."""
+    return f"""---
+id: {id}
+status: closed
+created_at: x
+reason: completed
+evidence: {line}
+---
+
+# Closed on {id}
+"""
+
+
 def issue_text(id, title):
     """A valid, rewrite-stable issue for identity checks."""
     return f"""---
@@ -233,6 +292,66 @@ if __name__ == "__main__":
             assert code == 1, (code, out, err)
             assert "ISS-906" in err and "not an issue" in err, err
             os.unlink(burnt)
+
+            # 7b. Named like an issue and missing a required field. The skip
+            #     `parse_issue` makes is right for a stray note and wrong for
+            #     a file called ISS-907.md: that one vanishes from `list`,
+            #     from `next` and from every count. The filename is the whole
+            #     distinction, and the finding has to name the field or it
+            #     sends you off to diff against a working file.
+            write("ISS-907.md", MISSING_STATUS, where=issues)
+            write("notes.md", STRAY_NOTE, where=issues)
+            code, out, err = run(check)
+            assert code == 1, (code, out, err)
+            assert "ISS-907" in err and "status" in err, err
+            assert "notes.md" not in err, err
+            os.remove(os.path.join(issues, "ISS-907.md"))
+            os.remove(os.path.join(issues, "notes.md"))
+
+            # 7c. A dependency cycle. `require_blockers` refuses to write one
+            #     and `check` never asked, so a cycle that arrives by hand
+            #     edit is permanent: both issues are blocked by each other,
+            #     neither is ever ready, and nothing says why. The path, not
+            #     "cycle detected" - the same sentence require_blockers gives,
+            #     because it names the edge to drop.
+            write("ISS-908.md", cycle_text("ISS-908", "ISS-909"), where=issues)
+            write("ISS-909.md", cycle_text("ISS-909", "ISS-908"), where=issues)
+            code, out, err = run(check)
+            assert code == 1, (code, out, err)
+            cycle = [line for line in err.splitlines() if "itself" in line]
+            # Once, not once per member: two lines saying the same cycle from
+            # two ends is the noise that makes a report get ignored.
+            assert len(cycle) == 1, err
+            assert "ISS-908 -> ISS-909 -> ISS-908" in cycle[0], err
+            os.remove(os.path.join(issues, "ISS-908.md"))
+            os.remove(os.path.join(issues, "ISS-909.md"))
+
+            # 7d. A filename that disagrees with the id inside it. `check`
+            #     already holds both halves to catch duplicate ids and never
+            #     compared them. It reads and lists fine as ISS-911, and
+            #     `issue log ISS-911` finds nothing at all.
+            write("ISS-910.md", MISNAMED, where=issues)
+            code, out, err = run(check)
+            assert code == 1, (code, out, err)
+            assert "ISS-910" in err and "ISS-911" in err, err
+            os.remove(os.path.join(issues, "ISS-910.md"))
+
+            # 7e. Evidence that is not a JSON array of objects. It is the one
+            #     field holding JSON rather than a comma-joined string, it
+            #     round trips through split_file untouched whatever it says,
+            #     and nothing ever confirmed it parses - so a closed issue's
+            #     proof reads back as no proof, with a line on stderr from
+            #     wherever `view` happened to be.
+            write("ISS-912.md", evidence_text("ISS-912", '[{"type": "commit"'), where=issues)
+            # Valid JSON, wrong shape: the readers index `item["type"]`, so a
+            # bare list of strings is a TypeError one `issue view` away.
+            write("ISS-913.md", evidence_text("ISS-913", '["deadbeef"]'), where=issues)
+            code, out, err = run(check)
+            assert code == 1, (code, out, err)
+            assert "ISS-912" in err and "evidence" in err, err
+            assert "ISS-913" in err, err
+            os.remove(os.path.join(issues, "ISS-912.md"))
+            os.remove(os.path.join(issues, "ISS-913.md"))
 
             # 8. --plans is the other half of this verb: a report, not a
             #    check. One row per plan, on stdout, exit 0 - the threshold

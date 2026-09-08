@@ -21,6 +21,13 @@ PREFIX = re.compile(r"[A-Za-z]+$")
 # finding on every issue in the repo the day one of them is edited.
 FIELD_ORDER = ("id", "status", "created_at", "updated_at")
 
+# What makes a file an issue rather than a note somebody left in the directory.
+# updated_at is deliberately not here: files written before it existed have
+# none, and requiring it would drop them out of `issue list` entirely. One
+# copy, because `check` reports which of these a file is missing and a second
+# copy of the tuple is a report that disagrees with the parser.
+REQUIRED = ("id", "status", "created_at", "title")
+
 
 class Busy(Exception):
     """The tracker lock is held by another process, and the caller asked not to
@@ -265,8 +272,14 @@ def write_atomic(file_path: str, content: str) -> str:
     return file_path
 
 
-def parse_issue(file_path: str) -> dict | None:
-    """Read one issue file back into a dict. Returns None if it isn't a valid issue."""
+def parse_fields(file_path: str) -> dict | None:
+    """One issue file as a dict, before asking whether it is an issue at all.
+
+    Split out from `parse_issue` for `check`, which has to say *which* required
+    field a file called ISS-001.md has not got. That answer is one `not all()`
+    away inside the parser and unreachable from outside it, because the parser
+    hands back None - the same None it gives a stray note, which is why nothing
+    could tell the two apart (ISS-042)."""
     split = split_file(file_path)
     if split is None:
         return None
@@ -279,11 +292,22 @@ def parse_issue(file_path: str) -> dict | None:
         if line.startswith("# "):
             issue["title"] = line[2:].strip()
             break
+    return issue
 
-    # A file missing any of these isn't an issue we wrote - skip it. updated_at
-    # is deliberately not required: files written before it existed don't have
-    # one, and requiring it would drop them out of `issue list` entirely.
-    if not all(k in issue for k in ("id", "status", "created_at", "title")):
+
+def missing_fields(issue: dict) -> list:
+    """Which of REQUIRED this dict has not got, in the documented order."""
+    return [key for key in REQUIRED if key not in issue]
+
+
+def parse_issue(file_path: str) -> dict | None:
+    """Read one issue file back into a dict. Returns None if it isn't a valid issue.
+
+    A file missing any required field isn't an issue we wrote - skip it. That
+    skip is what keeps a note in the directory out of `issue list`, and it is
+    why `check` asks the question in two halves instead of calling this."""
+    issue = parse_fields(file_path)
+    if issue is None or missing_fields(issue):
         return None
     return issue
 

@@ -33,6 +33,7 @@ import sys
 
 from cli_issue_tracker.events import SUFFIX as EVENTS_SUFFIX
 from cli_issue_tracker.events import bad_lines
+from cli_issue_tracker.deps import cycle_from
 from cli_issue_tracker.fields import PRIORITIES
 from cli_issue_tracker.fields import STATUSES
 from cli_issue_tracker.fields import blockers_of
@@ -42,7 +43,10 @@ from cli_issue_tracker.plan import read_plan
 from cli_issue_tracker.plan import untouched
 from cli_issue_tracker.plan import work_dir
 from cli_issue_tracker.storage import FIELD_ORDER
+from cli_issue_tracker.storage import ID
 from cli_issue_tracker.storage import join_file
+from cli_issue_tracker.storage import missing_fields
+from cli_issue_tracker.storage import parse_fields
 from cli_issue_tracker.storage import parse_issue
 from cli_issue_tracker.storage import require_issue_dir
 from cli_issue_tracker.storage import split_file
@@ -71,6 +75,40 @@ def round_trip(path):
         return raw
     fields, body = split
     return join_file(fields, body, first=FIELD_ORDER)
+
+
+def not_an_issue(file_path):
+    """Why `parse_issue` rejected this file, as the half of a sentence that
+    goes after "is not an issue - ".
+
+    Only ever asked of a file whose *name* is an id, which is the whole design
+    decision in ISS-042: the skip is load-bearing for `notes.md` and a bug for
+    `ISS-001.md`, and nothing but the filename separates the two. The name is
+    the tracker's own promise about what the file is - `read_issue` builds it
+    from an id and expects to find an issue there."""
+    issue = parse_fields(file_path)
+    if issue is None:
+        return "no frontmatter"
+    return "missing " + ", ".join(missing_fields(issue))
+
+
+def unreadable_evidence(issue):
+    """Whether the evidence line cannot be read back as the proof it holds.
+
+    `evidence` is the one field carrying JSON rather than a comma-joined
+    string, and `partition(":")` keeps whatever is on the line, so it survives
+    a rewrite saying anything at all. Nothing else ever confirmed it parses,
+    which makes a closed issue's proof a `view` away from being silently
+    dropped - or, for an array of the wrong shape, a KeyError, since every
+    reader indexes `item["type"]`. A closed issue whose proof cannot be read
+    is the one thing this tool refuses to create at the door."""
+    try:
+        evidence = json.loads(issue["evidence"])
+    except json.JSONDecodeError:
+        return True
+    if not isinstance(evidence, list):
+        return True
+    return not all(isinstance(item, dict) and "type" in item for item in evidence)
 
 
 def plan_history(work, name):
@@ -193,7 +231,13 @@ def check(as_json=False, plans=False):
             # reserves its id by creating the file empty and filling it in
             # (ISS-039), so a create that dies in that window leaves exactly
             # this - a burnt id and a file no command will ever mention.
-            findings.append((name, "is not an issue - no frontmatter, or missing id/status/title"))
+            #
+            # Only for a file whose name is an id, though. The same None comes
+            # back for a note somebody keeps in the directory, and that skip is
+            # the reason parse_issue returns None at all - a finding on it
+            # would make this verb unusable in the repos that have one.
+            if ID.match(name[: -len(".md")]):
+                findings.append((name, f"is not an issue - {not_an_issue(file_path)}"))
         else:
             id = issue["id"]
             if id in file_by_id:
@@ -202,6 +246,13 @@ def check(as_json=False, plans=False):
                 )
             else:
                 file_by_id[id] = name
+            # An id becomes a path everywhere else in this tool, so the name
+            # outside and the id inside are the same fact written twice and
+            # this is the only place they meet. Disagreeing, the file reads
+            # and lists fine under the id it claims while `issue log` and
+            # `issue view` look for a filename that is not there.
+            if name != f"{id}.md":
+                findings.append((name, f"holds id {id} - every command looks for {id}.md"))
             by_id[issue["id"]] = issue
 
     # One pass per issue, so everything wrong with one file prints together.
@@ -219,6 +270,7 @@ def check(as_json=False, plans=False):
     # so counting it would strand the issue forever - which is right, and is
     # also why nothing has ever had a reason to say the hole is there. `brief`
     # prints it as a warning; this puts an exit code on it.
+    graph = {id: blockers_of(issue) for id, issue in by_id.items()}
     for id, issue in sorted(by_id.items()):
         for field, known in (("status", STATUSES), ("priority", PRIORITIES)):
             value = issue.get(field)
@@ -228,6 +280,25 @@ def check(as_json=False, plans=False):
         if missing:
             findings.append(
                 (f"{id}.md", f"blocked_by names {', '.join(missing)}, which is not here")
+            )
+
+        # A cycle `require_blockers` would have refused, arrived by hand edit
+        # or by a merge. Left in, both issues are blocked by each other, so
+        # neither is ever ready and `--ready` just returns one row short
+        # forever with nothing said. The path rather than "cycle detected",
+        # the same sentence require_blockers gives: it names the edge to drop.
+        #
+        # Reported from the lowest id in it and nowhere else - the walk finds
+        # the same cycle from every member, and a report that says one thing
+        # three times is a report that gets skimmed.
+        path = cycle_from(id, graph)
+        if path and id == min(path):
+            findings.append((f"{id}.md", f"waits on itself: {' -> '.join(path)}"))
+
+        if "evidence" in issue and unreadable_evidence(issue):
+            findings.append(
+                (f"{id}.md", "evidence is not a JSON array of typed objects - "
+                             "the proof this issue was closed on cannot be read")
             )
 
     # A plan or an event log is named after its issue and has no identity of
