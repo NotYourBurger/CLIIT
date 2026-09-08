@@ -815,6 +815,16 @@ not stop the others; the exit code counts them. `tests/helpers.py` holds the
 two things they all wanted: `run()`, which calls a command and hands back its
 exit code, stdout and stderr, and `REPO`.
 
+`.github/workflows/ci.yml` runs that same script on every push and pull
+request, across Linux, macOS and Windows on Python 3.11, 3.12 and 3.13. The
+matrix is the point rather than the redundancy: `storage.locked` takes a
+different branch per platform, `file_by_id` is case-blind on Windows and
+case-sensitive everywhere else, and the UTF-8 and LF pinning exists because
+one machine defaults to cp1252. Two jobs sit beside it — one installs the
+built wheel into an environment that has never seen this checkout and runs
+the CLI there, and one deletes git from the machine, because six places shell
+out to git and none of them may fail the command it is inside.
+
 `test_encoding.py` exists because the same mistake landed four times: this machine
 defaults to cp1252 and to CRLF, so anything reading or writing text without
 being told mangles accents or line endings quietly and still exits 0. It parses

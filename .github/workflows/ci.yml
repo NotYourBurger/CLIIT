@@ -1,0 +1,74 @@
+# Every check this repo has, on every platform it claims to run on.
+#
+# tests/all.py already exits non-zero on failure, so there is no test framework
+# here and none is wanted: each job is `uv sync` and one script. The matrix is
+# the point - `storage.locked` forks on platform, `file_by_id` is case-blind on
+# Windows and case-sensitive elsewhere, and the UTF-8/LF pinning exists because
+# one machine defaults to cp1252 (ISS-047).
+
+name: ci
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: ${{ matrix.os }} / py${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - run: uv sync
+      - run: uv run python tests/all.py
+
+  # The README says `uv sync`; that is the source tree. This is the other half:
+  # the wheel a stranger installs, in a venv that has never seen this checkout.
+  wheel:
+    name: built wheel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+      - run: uv build
+      - name: install the wheel into a clean environment
+        run: |
+          uv venv /tmp/clean
+          uv pip install --python /tmp/clean/bin/python dist/*.whl
+      - name: the entry point works with no source tree in sight
+        run: |
+          mkdir /tmp/smoke && cd /tmp/smoke && git init -q .
+          /tmp/clean/bin/issue --version
+          /tmp/clean/bin/issue init
+          /tmp/clean/bin/issue create "Smoke test" "Proves the wheel runs." --priority high
+          /tmp/clean/bin/issue list --json
+          /tmp/clean/bin/issue next
+
+  # Six places shell out to git and none of them may fail the command it is
+  # inside. A machine with no git is the contract, so this one has none - the
+  # binary is removed after checkout, which is the last step that needed it.
+  no-git:
+    name: no git on PATH
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+      - run: uv sync
+      - name: remove git
+        run: while command -v git >/dev/null; do sudo rm -f "$(command -v git)"; done
+      - run: uv run --frozen python tests/all.py

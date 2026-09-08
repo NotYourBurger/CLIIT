@@ -1,6 +1,7 @@
 """issue log against a real throwaway git repo - the branches worth checking are
 the three ways it can have nothing to print, not the formatting."""
 import os
+import shutil
 import subprocess
 import tempfile
 
@@ -22,6 +23,13 @@ def log(id):
 
 
 def demo():
+    # Every branch below needs a real repository with real commits in it, so a
+    # machine with no git has nothing here to be wrong about - the contract for
+    # `issue log` without git is test_degraded's, and it holds it (ISS-047).
+    if not shutil.which("git"):
+        print("ok (no git)")
+        return
+
     original = os.getcwd()
     with tempfile.TemporaryDirectory() as tmp:
         try:

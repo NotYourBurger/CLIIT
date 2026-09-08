@@ -15,7 +15,6 @@ Run: uv run python tests/test_close.py
 
 import json
 import os
-import subprocess
 import tempfile
 
 from helpers import REPO, run
@@ -26,7 +25,7 @@ from cli_issue_tracker.issues import (
     set_fields,
     view_issue,
 )
-from cli_issue_tracker.storage import parse_issue, write_issue
+from cli_issue_tracker.storage import parse_issue, run_git, write_issue
 
 
 def read(tmp, id):
@@ -36,14 +35,12 @@ def read(tmp, id):
 def head_sha():
     """A commit that really is in this repository, for the one piece of
     evidence the tool validates. Empty outside a repo, which is exactly the
-    case require_commits skips - so the check below skips with it."""
-    git = subprocess.run(
-        ["git", "rev-parse", "--short", "HEAD"],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        cwd=REPO,
-    )
+    case require_commits skips - so the check below skips with it.
+
+    Through run_git rather than subprocess, for the reason run_git exists: a
+    machine with no git raised here instead of answering "" and took the whole
+    file down with it (ISS-047)."""
+    git = run_git("rev-parse", "--short", "HEAD", cwd=REPO)
     return git.stdout.strip() if not git.returncode else ""
 
 
