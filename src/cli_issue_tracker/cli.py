@@ -61,8 +61,9 @@ def next_up(
     as_json: bool = typer.Option(False, "--json", help="Print the issue as JSON"),
     # Opt-in, so asking what to do next never decides it for you.
     claim: bool = typer.Option(False, "--claim", help="Take the issue, and retry if the claim is lost"),
+    compact: bool = typer.Option(False, "--compact", help="Summarize the plan; omit git details (not with --json)"),
 ):
-    next_issue(as_json, claim)
+    next_issue(as_json, claim, compact)
 
 
 # The verb after `next`: `next` names the issue, `start` opens it. Also the
@@ -71,8 +72,9 @@ def next_up(
 def start(
     id: str,
     anyway: bool = typer.Option(False, "--anyway", help="Start it even though something blocks it"),
+    compact: bool = typer.Option(False, "--compact", help="Summarize the plan for a session that already has context"),
 ):
-    start_issue(id, anyway)
+    start_issue(id, anyway, compact)
 
 
 # The question before `next`: not "what do I do" but "what is going on here".
