@@ -80,6 +80,10 @@ is, and they match no `--priority` filter rather than being counted as
 Labels say what kind of issue it is — `bug`, `auth`, `docs`, whatever you
 invent. They are stored as one comma-joined `labels` field, lowercased, deduped
 and sorted, so a label cannot contain a comma; no labels means no field at all.
+It cannot contain a newline either, and for a worse reason: the comma separates
+two labels, but a newline separates two frontmatter fields, so a pasted
+multi-line value would land on the file as `status: closed`. A label has to be
+one printable line and may not start with `-`; the same rule covers `--block`.
 `--label` on `set` adds and `--unlabel` (`-L`) removes, because a label is
 something you learn about an issue after filing it. Removing the last one takes
 the field with it.
@@ -439,7 +443,10 @@ Ids are `ISS-001`, `ISS-002` and so on. Set `ISSUE_PREFIX` to use different
 letters — `ISSUE_PREFIX=BUG issue create ...` files `BUG-001.md`. Only `create`
 reads it; everything else works off the filename, so issues filed under an old
 prefix keep listing and numbering restarts under the new one instead of
-continuing across both.
+continuing across both. Letters is a rule, not a description: the prefix and
+the id both become a filename, so a prefix that is not letters is refused and
+so is an argument that is not letters-dash-digits. An id that does not exist is
+still just a failed lookup — `ISS-999` says so and exits 1.
 
 ## Work plans
 

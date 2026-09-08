@@ -1,11 +1,19 @@
 import contextlib
 import os
+import re
 import sys
 import tempfile
 from datetime import datetime
 
 ISSUES_DIR = ".issues"
 LOCK_FILE = ".lock"
+
+# The shape `next_id` allocates and every reader here assumes: letters, a dash,
+# digits. Written down because an id is joined onto a directory to make a path
+# in four places and was checked in none of them, so `../secret` was an id
+# (ISS-040). The prefix is the same letters, on their own.
+ID = re.compile(r"[A-Za-z]+-[0-9]+$")
+PREFIX = re.compile(r"[A-Za-z]+$")
 
 # The keys that keep their documented order at the top of every file; anything
 # a human added follows. One copy, because `check` compares a file against what
@@ -26,8 +34,39 @@ def id_prefix() -> str:
     this tool already has and a second mechanism for one string is not worth
     it. Changing it mid-project is safe: existing issues keep their own prefix
     and still list, and numbering restarts under the new one without colliding
-    on disk."""
-    return os.environ.get("ISSUE_PREFIX", "ISS")
+    on disk.
+
+    The letters are checked here rather than in `create`, because this is the
+    only reader of the variable and the value is about to become a filename:
+    a prefix carrying a path separator writes outside .issues/ (ISS-040)."""
+    prefix = os.environ.get("ISSUE_PREFIX", "ISS")
+    if not PREFIX.match(prefix):
+        print(f"ISSUE_PREFIX must be letters - {prefix!r} is not", file=sys.stderr)
+        sys.exit(1)
+    return prefix
+
+
+def require_id(id: str) -> str:
+    """Pass the id back, or exit 1 saying it is not one.
+
+    Every command that names an issue joins that name onto a directory, so an
+    unchecked argument is a path and not an id. It is a shape check and not a
+    lookup: "does not exist" is the honest answer for ISS-999 and a misleading
+    one for `../secret`, which does exist and is none of the tracker's
+    business. Exit 1 either way - a bad id and a missing one are both a lookup
+    that found nothing, which is the code the rest of this tool already gives.
+
+    It lives here because `read_issue` is the lowest layer that does the join,
+    and validate.py is three layers above it."""
+    if not ID.match(id):
+        print(
+            f"{id!r} is not an issue id - ids are letters, a dash and digits, "
+            f"like {id_prefix()}-001",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    return id
+
 
 def now() -> str:
     """The one timestamp format on disk - local time, second precision."""
@@ -275,7 +314,7 @@ def write_issue(issue: dict) -> str:
 
 def read_issue(id: str) -> dict | None:
     path = require_issue_dir()
-    file_name = f"{id}.md"
+    file_name = f"{require_id(id)}.md"
     file_path = os.path.join(path,file_name)
     if os.path.isfile(file_path):
         return parse_issue(file_path)

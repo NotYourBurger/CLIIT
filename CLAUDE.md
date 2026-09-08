@@ -27,7 +27,14 @@ change:
   fenced code, unicode). Unknown frontmatter keys are preserved on rewrite.
 - **Frontmatter has no list type.** `labels` and `blocked_by` are comma-joined
   strings, read back through `set_field()`. So no value may contain a comma —
-  that is the whole shared validation in `clean_set()`. `evidence` is the one
+  that is the first half of the shared validation in `clean_set()`. The second
+  half is the same argument one level up: a comma separates two values, and a
+  newline separates two *fields*, so a label carrying one is not a bad label,
+  it is `status: closed` written past the front door that refuses the word by
+  name (ISS-040). The rule is "one printable line" rather than "no newline",
+  because `split_file` reads with `splitlines()`, which breaks on more than
+  one character — `str.isprintable()` is that rule in one call. A leading `-`
+  goes with it: `---` is the fence and `- ` opens a list. `evidence` is the one
   exception and holds a JSON array: a `--test` command has commas in it, and
   `partition(":")` keeps the whole rest of the line, so it round trips. It is
   deliberately the only ugly line in the file; `issue view` pays it back by
@@ -182,6 +189,14 @@ obvious from the code:
   contract. A batch `set` with one bad id still writes the good ones, then exits 1.
 - **Validate before writing.** Bad status/priority/blocker exits before anything
   touches disk; a rejected `create` must not burn an id.
+- **An id becomes a path, so `storage.require_id` checks its shape at the door.**
+  Letters, a dash, digits — the shape `next_id` allocates. It lives in
+  `storage.py` and not in `validate.py` because `read_issue` is the lowest layer
+  that does the join and cannot import upward, and it is called from exactly the
+  three places a user's argument first becomes a path: `read_issue`, `log_issue`
+  and `append_event`. The path *builders* — `plan_path`, `events_path` — do not
+  check, because `issue check` hands them the names it found in `work/` and
+  `read_plan` is documented as never raising (ISS-040).
 - **Two writers are ordered by `storage.locked`, not by hoping.** Every write
   is read-validate-modify-write, so two agents in one worktree interleave and
   one loses. `try_claim` holds `.issues/.lock` — an OS advisory lock, so the
@@ -214,7 +229,9 @@ obvious from the code:
 ## Environment knobs
 
 `ISSUES_DIR` (skip the walk-up entirely), `ISSUE_PREFIX` (id letters, read only
-by `create`), `ISSUE_USER` (who `claim` acts as). Every command except `init`
+by `create`, and letters is enforced — the value becomes a filename, so a
+separator in it writes outside `.issues/`), `ISSUE_USER` (who `claim` acts as).
+Every command except `init`
 finds `.issues/` by walking up from the cwd, git-style; `init` is deliberately
 local.
 

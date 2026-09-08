@@ -20,6 +20,12 @@ from cli_issue_tracker.deps import cycle_from
 from cli_issue_tracker.storage import read_issue
 
 
+# Named rather than repr'd for the three that get typed by accident, because
+# "cannot contain '\n'" reads as a bug in the tool and "cannot contain a
+# newline" reads as the paste it actually was.
+NAMES = {"\n": "a newline", "\r": "a carriage return", "\t": "a tab"}
+
+
 def clean_set(words, kind, clean=lambda word: word):
     """User words in, storable values out: stripped, deduped and sorted, each
     one through `clean`. Sorted because the file is read by humans and diffed
@@ -41,6 +47,29 @@ def clean_set(words, kind, clean=lambda word: word):
                 f"between two, so pass them as two flags",
                 file=sys.stderr,
             )
+            sys.exit(1)
+        # A comma separates two values; a newline separates two *fields*, and is
+        # the worse of the two - frontmatter is line-oriented, so the lines after
+        # one are not a label, they are `status: closed` and `assignee: mallory`
+        # written past the front door that refuses both by name (ISS-040).
+        # isprintable() is the stdlib's answer and covers more than the one
+        # newline: split_file reads the file with splitlines(), which also breaks
+        # on a vertical tab, a NEL and a Unicode line separator, and a NUL that
+        # breaks nothing is still not a word.
+        # ponytail: it also refuses a zero-width joiner, so an emoji sequence is
+        # not a label. Narrow to Cc plus the line separators if one is ever asked for.
+        bad = next((char for char in value if not char.isprintable() and char != " "), None)
+        if bad is not None:
+            print(
+                f"A {kind} cannot contain {NAMES.get(bad, repr(bad))} - "
+                f"{word!r} would be written as more than one line",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        # A leading dash is the other character the format reads as structure:
+        # `---` is the fence round the frontmatter and `- ` opens a list.
+        if value.startswith("-"):
+            print(f"A {kind} cannot start with a dash - {word!r}", file=sys.stderr)
             sys.exit(1)
         values.add(value)
     return sorted(values)

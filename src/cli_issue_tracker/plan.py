@@ -90,7 +90,12 @@ def work_dir(create=False) -> str:
 def plan_path(id: str) -> str:
     """One plan per issue, named after it. No id allocation and no frontmatter:
     the issue already has both, and the plan is not a second artifact with its
-    own identity - it is this issue's execution state."""
+    own identity - it is this issue's execution state.
+
+    No id-shape check, unlike `read_issue`: `issue check` walks work/ and hands
+    this back the names it found, and `read_plan` is documented as never
+    raising. The shape is checked where a user's argument first becomes a path
+    - which every verb that reaches here has already been through."""
     return os.path.join(work_dir(), f"{id}.md")
 
 

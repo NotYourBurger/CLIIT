@@ -23,6 +23,7 @@ import os
 import sys
 
 from cli_issue_tracker.plan import work_dir
+from cli_issue_tracker.storage import require_id
 from cli_issue_tracker.storage import now
 from cli_issue_tracker.storage import read_issue
 
@@ -44,9 +45,13 @@ def events_path(id: str) -> str:
 def append_event(id: str, text: str, type: str = DEFAULT_TYPE) -> dict:
     """Append one entry and return it. The only write in this module, and it
     is always an append: no read, no rewrite, so a process killed mid-write
-    can corrupt at most the entry it was writing, never one already on disk."""
+    can corrupt at most the entry it was writing, never one already on disk.
+
+    The id is checked here rather than in `events_path`, which the reader also
+    uses: this is the half that creates a file, so an id that is really a path
+    would write one outside the tracker (ISS-040)."""
     entry = {"at": now(), "type": type, "text": text}
-    path = os.path.join(work_dir(create=True), f"{id}{SUFFIX}")
+    path = os.path.join(work_dir(create=True), f"{require_id(id)}{SUFFIX}")
     with open(path, "a", encoding="utf-8", newline="\n") as log_file:
         log_file.write(json.dumps(entry) + "\n")
     return entry

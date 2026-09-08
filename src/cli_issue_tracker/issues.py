@@ -71,6 +71,7 @@ from cli_issue_tracker.render import plan_block
 from cli_issue_tracker.render import plan_lines
 from cli_issue_tracker.render import print_table
 from cli_issue_tracker.render import resolved_lines
+from cli_issue_tracker.storage import require_id
 from cli_issue_tracker.storage import require_issue_dir
 from cli_issue_tracker.storage import locked
 from cli_issue_tracker.storage import now
@@ -1175,7 +1176,7 @@ def log_issue(id):
     """`git log` for one issue file. The history is already in the repo because
     issues are files - this only points git at the right path and gets out of
     the way. No parsing of git's output: --format is the whole formatter."""
-    file_path = os.path.join(require_issue_dir(), f"{id}.md")
+    file_path = os.path.join(require_issue_dir(), f"{require_id(id)}.md")
     if not os.path.isfile(file_path):
         print(f"Issue {id} Doesnt Exist", file=sys.stderr)
         sys.exit(1)
