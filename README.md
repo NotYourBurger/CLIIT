@@ -4,6 +4,56 @@ A small issue tracker that lives in your repo. Issues are plain Markdown files
 in a `.issues/` folder, so they version with your code and read fine without
 the tool.
 
+## Who it is for
+
+One repo, one backlog, and the people — or agents — already working in it. The
+tracker is worth having if you want the issue list to arrive with `git pull`,
+to be reviewable in a pull request beside the change that closed it, and to
+still read as prose in six months when the tool is gone. It is not worth having
+if the backlog is shared by people who do not share the repo.
+
+Half the design is for coding agents specifically. Every read verb has a
+`--json` form, `issue next` answers "what should I work on" in one call with
+the blocking rule already applied, and `issue start` seeds a work plan the
+agent keeps ticked as it goes — so a session that dies at a usage limit leaves
+its state on disk rather than in a lost context window.
+
+## Thirty seconds
+
+```bash
+uv sync
+issue init                          # .issues/ here; the workflow rule goes into CLAUDE.md if you keep one
+issue create "Login drops the session" "Cookie vanishes on redirect." -p high -l bug
+issue next                          # ISS-001 - the one to work on, and why
+issue start ISS-001                 # seeds .issues/work/ISS-001.md; keep it ticked
+issue close ISS-001 --completed -m "SameSite was unset on the redirect." \
+  --test "uv run python tests/all.py"   # closing takes a reason and proof
+git add .issues && git commit -m "ISS-001: set SameSite on the session cookie"
+```
+
+That is the whole loop. Everything below is the reference for it.
+
+## Non-goals
+
+These are edges of the design, not gaps in it:
+
+- **One repo, one tracker.** `.issues/` is found by walking up from the current
+  directory, git-style. Two repos are two backlogs and nothing joins them.
+- **No server, no web UI, no notifications.** The interface is this CLI and
+  your editor; sharing is `git push`. Nothing runs between your commands.
+- **Ids are not unique across clones.** An id is one past the highest one
+  visible, so two people creating offline both get `ISS-051` and the merge is
+  yours to settle. Within one working copy the allocation is safe; across forks
+  it is not. Pull before you create.
+- **git owns the history.** `issue log` is `git log --follow` on the file and
+  nothing is kept by the tool. Outside a repo every command still works — that
+  history is simply absent, the same answer as git not being installed.
+- **No workflow engine.** Three statuses, three priorities, one blocking rule,
+  no transitions to configure. A field of your own is an unknown frontmatter
+  key, which is preserved and otherwise ignored.
+- **Not a replacement for a real tracker at scale.** Every command reads every
+  file in `.issues/`. That is fine at hundreds and it is meant to be.
+
 ## Install
 
 ```bash
