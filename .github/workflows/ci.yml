@@ -33,6 +33,24 @@ jobs:
       - run: uv sync
       - run: uv run python tests/all.py
 
+  # The suite reads tests/fixtures/ and never this repo's own .issues/, so that
+  # a clone with different issues in it still passes (ISS-049). That leaves the
+  # real tracker unread by anything, which is the half worth keeping: here the
+  # repository state is the branch under test, so a broken issue file is the
+  # change that broke it. `--plans` is a report and exits 0 either way - it runs
+  # for the log, not the verdict.
+  tracker:
+    name: the real .issues/
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+      - run: uv sync
+      - run: uv run issue check
+      - run: uv run issue check --plans
+
   # The README says `uv sync`; that is the source tree. This is the other half:
   # the wheel a stranger installs, in a venv that has never seen this checkout.
   wheel:

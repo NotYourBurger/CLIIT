@@ -11,9 +11,15 @@ import os
 
 from cli_issue_tracker.issues import close_issue
 
-# The repo, not this directory: test_storage reads a real issue out of .issues/
-# and test_encoding walks the source.
+# The repo, not this directory: test_encoding walks the source.
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# A frozen .issues/ that is committed and never moves. The two checks that
+# needed a real corpus - the parser round trip and the whole-directory pass -
+# used to read the repo's own .issues/, which made their result depend on which
+# issues happened to be filed rather than on the code (ISS-049). See the README
+# in there before adding to it.
+FIXTURES = os.path.join(REPO, "tests", "fixtures")
 
 
 def run(function, *args, **kwargs):

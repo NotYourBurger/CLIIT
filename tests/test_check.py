@@ -15,7 +15,7 @@ import re
 import subprocess
 import tempfile
 
-from helpers import REPO, run
+from helpers import FIXTURES, run
 from cli_issue_tracker.check import check
 from cli_issue_tracker.plan import seed
 
@@ -446,18 +446,32 @@ if __name__ == "__main__":
                 # scraped out of a column.
                 assert rows["ISS-905"]["untouched"] is True, rows["ISS-905"]
 
-            # 7. The twenty-six real files, which are the ones that matter.
-            #    test_storage reads one issue off disk; this reads every one,
-            #    and the day a parser change starts eating prose it fails
-            #    here rather than in an issue nobody reopens for a month.
-            os.environ["ISSUES_DIR"] = os.path.join(REPO, ".issues")
+            # 7. A whole directory of real prose, which is the one that
+            #    matters. Everything above is a file written three lines up to
+            #    fail a rule; this is a corpus nobody wrote to pass, and the day
+            #    a parser change starts eating writing it fails here rather than
+            #    in an issue nobody reopens for a month.
+            #
+            #    tests/fixtures/ and not the repo's own .issues/, which is what
+            #    this read until ISS-049: filing an issue while working - which
+            #    this repo's workflow tells you to do - could fail a check about
+            #    somebody else's change, and a clone whose ISS-003 had been
+            #    renamed failed outright. The corpus is frozen, so what it
+            #    measures is the code.
+            os.environ["ISSUES_DIR"] = FIXTURES
+            files = [name for name in os.listdir(FIXTURES) if name.endswith(".md")]
+            # An empty directory is the one way this passes while proving
+            # nothing, and it is exactly what a moved or renamed fixture leaves.
+            assert len(files) > 3, files
             code, out, err = run(check)
             assert code is None, (code, out, err)
 
-            # And the report over the plans this repo really keeps - the rows
-            # the threshold in ISS-031 gets counted from.
-            code, out, err = run(check, plans=True)
-            assert code is None, (code, out, err)
+            # `check --plans` is deliberately not run here. It is a report on
+            # how well this repo keeps its work plans - a fact about the people,
+            # not the code - so it cannot be an assertion in a suite that has to
+            # pass on any clone. `uv run issue check --plans` is the whole of it
+            # and CI runs it, along with `check` over the real .issues/, where
+            # the repository state under test is the branch that changed it.
 
         finally:
             os.chdir(original)

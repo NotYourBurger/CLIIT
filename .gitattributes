@@ -13,3 +13,8 @@
 # have that churn too and keep whatever the clone decides.
 .issues/**/*.md text eol=lf
 .issues/**/*.jsonl text eol=lf
+
+# The frozen corpus the suite reads instead of .issues/ (ISS-049). Same files,
+# same reason: `issue check` compares a file against its own rewrite byte for
+# byte, and a CRLF checkout fails that on every line.
+tests/fixtures/**/*.md text eol=lf

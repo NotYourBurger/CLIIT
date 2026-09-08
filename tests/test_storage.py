@@ -12,7 +12,7 @@ import os
 import shutil
 import tempfile
 
-from helpers import REPO
+from helpers import FIXTURES
 from cli_issue_tracker.storage import issues_dir, parse_issue, write_issue
 
 # Everything the parser has ever got wrong, in one body: a second "# " heading
@@ -79,11 +79,18 @@ if __name__ == "__main__":
 
             # 1. A real issue file off disk survives a rewrite, and a second
             #    rewrite changes nothing more (idempotent, not just stable once).
+            #
+            #    Off tests/fixtures/ and not off .issues/: this repo's tracker
+            #    is not a fixture, and reading it made the result depend on
+            #    which issues were filed (ISS-049). The file there is ISS-003 as
+            #    it stood, kept for the reason it was picked - prose with a
+            #    table, a fence and a blockquote, and no updated_at, which is
+            #    the shape every file written before that field existed has.
             real = os.path.join(issues, "ISS-003.md")
-            shutil.copyfile(os.path.join(REPO, ".issues", "ISS-003.md"), real)
+            shutil.copyfile(os.path.join(FIXTURES, "ISS-003.md"), real)
             issue = parse_issue(real)
-            assert issue is not None, "ISS-003.md no longer parses as an issue"
-            assert "updated_at" not in issue, "ISS-003.md on disk predates updated_at"
+            assert issue is not None, "the ISS-003 fixture no longer parses as an issue"
+            assert "updated_at" not in issue, "the ISS-003 fixture must predate updated_at"
             assert stable(round_trip(issue)) == stable(issue), "ISS-003 changed on rewrite"
             assert stable(round_trip(round_trip(issue))) == stable(issue), "rewrite is not idempotent"
 
