@@ -13,6 +13,7 @@ from cli_issue_tracker.issues import claim_issue
 from cli_issue_tracker.check import check
 from cli_issue_tracker.events import event_command
 from cli_issue_tracker.init import init
+from importlib.metadata import version as installed_version
 import sys
 app = typer.Typer()
 # Both streams, not just stdout. The console default here is cp1252, so a
@@ -21,8 +22,26 @@ app = typer.Typer()
 sys.stdout.reconfigure(encoding="utf-8")
 sys.stderr.reconfigure(encoding="utf-8")
 
+def show_version(asked: bool):
+    """--version, eager so it answers before any command is resolved.
+
+    The version is asked of the installed distribution rather than kept in a
+    `__version__` beside pyproject's: two copies of one number is a bug that
+    reports the wrong one, and reporting the wrong version is the whole thing
+    this flag exists to prevent (ISS-046).
+    """
+    if asked:
+        print(installed_version("cli-issue-tracker"))
+        raise typer.Exit()
+
+
 @app.callback()
-def main():
+def main(
+    version: bool = typer.Option(
+        False, "--version", callback=show_version, is_eager=True,
+        help="Print the version and exit",
+    ),
+):
     pass
 
 

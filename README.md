@@ -61,6 +61,7 @@ issue event ISS-042 "worker started, 0 tool calls" --type lifecycle
 issue event ISS-042 --type probe --stdin < probe.log   # pipe stdout in instead of quoting it
 issue event ISS-042                 # print what has been recorded so far
 issue event ISS-042 --json          # the same log, for an agent
+issue --version                     # the version a bug report should name
 ```
 
 Statuses are `in-progress`, `open` and `closed` — `closed` is written by
@@ -803,6 +804,7 @@ file per thing that can break:
 | `test_convert_id.py` | id allocation, including independent prefix sequences         |
 | `test_encoding.py`   | that nothing reads or writes text at the platform default   |
 | `test_concurrency.py` | two writers in one worktree: the claim race and the id race |
+| `test_version.py`    | `--version`, and the packaging metadata a bug report needs |
 
 No framework: each file is a script with a `demo()` that asserts and prints
 `ok`, so `uv run python tests/test_search.py` runs one on its own and the
@@ -820,3 +822,9 @@ the source and fails on any `open()` or `subprocess` call that takes the
 platform default — `encoding=` on every text call, and `newline=` on every
 write-mode `open()` — rather than waiting for a fifth bug report. Reads are
 deliberately left translated, which is what lets a hand-edited CRLF file parse.
+
+## License
+
+MIT — see [LICENSE](LICENSE). `issue --version` prints the version, which is
+the one a bug report should name; it is read from the installed distribution
+rather than a `__version__` kept beside it, so there is only ever one number.

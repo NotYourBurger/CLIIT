@@ -1,17 +1,33 @@
 [project]
 name = "cli-issue-tracker"
 version = "0.1.0"
-description = "Add your description here"
+description = "An issue tracker whose whole database is .issues/*.md, one Markdown file per issue"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
-    { name = "tahmid", email = "tahmidak2018@gmail.com" }
+    { name = "Tahmid Khan Alim", email = "tahmidkhanofficial@gmail.com" }
 ]
 requires-python = ">=3.13"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Bug Tracking",
+    "Topic :: Software Development :: Version Control :: Git",
+]
 dependencies = [
     "rich>=15.0.0",
     "typer>=0.27.2",
     "tzlocal>=5.4.4",
 ]
+
+[project.urls]
+Homepage = "https://github.com/NotYourBurger/cli-issue-tracker"
+Repository = "https://github.com/NotYourBurger/cli-issue-tracker"
+Issues = "https://github.com/NotYourBurger/cli-issue-tracker/issues"
 
 [project.scripts]
 issue = "cli_issue_tracker.cli:app"
