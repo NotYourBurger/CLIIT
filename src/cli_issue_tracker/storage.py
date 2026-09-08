@@ -1,5 +1,6 @@
 import os
 import sys
+import tempfile
 from datetime import datetime
 
 ISSUES_DIR = ".issues"
@@ -108,6 +109,47 @@ def join_file(fields: dict, body: str, first=()) -> str:
 """
 
 
+def write_atomic(file_path: str, content: str) -> str:
+    """Write content to file_path so that a failure leaves the old file intact.
+
+    `open(path, "w")` truncates before a byte of the new content is written, so
+    anything that stops the process between the open and the flush - a full
+    disk, a kill, a crash in the lines between - leaves an empty file behind.
+    An empty issue is not a short issue, it is no issue at all, and the body is
+    the part with no other copy: it is why this tool exists.
+
+    So: a temp file beside the target, flushed to the platter, then
+    `os.replace`, which is atomic on POSIX and on Windows. A reader sees the
+    whole old file or the whole new one and never half of either. Beside the
+    target because a replace across filesystems is not one operation. The temp
+    name deliberately does not end in `.md` - every reader here filters on that
+    suffix, so the file is invisible for the moment it exists.
+
+    The bytes are unchanged from the plain open() this replaced: UTF-8 and LF,
+    because text mode takes a platform default and on this one "\\n" leaves as
+    "\\r\\n". `append_event` needs none of this and must not grow it - appending
+    and never rewriting is this same property, already held."""
+    directory = os.path.dirname(file_path) or "."
+    handle, temp_path = tempfile.mkstemp(
+        dir=directory, prefix=os.path.basename(file_path) + ".", suffix=".tmp"
+    )
+    try:
+        with open(handle, "w", encoding="utf-8", newline="\n") as temp_file:
+            temp_file.write(content)
+            temp_file.flush()
+            # The replace is atomic against another reader; the fsync is what
+            # makes it atomic against the power going out, which is one of the
+            # ways the window this closes was reached in the first place.
+            os.fsync(temp_file.fileno())
+        os.replace(temp_path, file_path)
+    finally:
+        # One cleanup covering both paths: after a successful replace there is
+        # nothing left at temp_path to remove.
+        if os.path.exists(temp_path):
+            os.unlink(temp_path)
+    return file_path
+
+
 def parse_issue(file_path: str) -> dict | None:
     """Read one issue file back into a dict. Returns None if it isn't a valid issue."""
     split = split_file(file_path)
@@ -145,16 +187,14 @@ def write_issue(issue: dict) -> str:
     fields = {key: value for key, value in issue.items() if key not in ("title", "body")}
     content = join_file(fields, issue["body"], first=FIELD_ORDER)
 
-    # newline="\n" for the same reason encoding="utf-8" is here: text mode
-    # takes a platform default, and on this one "\n" leaves as "\r\n". The file
-    # format is the API and its bytes are part of it - a tool writing CRLF
-    # beside an agent's editor writing LF is a diff on every line of a file
-    # nobody touched, and `join_file` already committed to "\n". Reads stay
-    # translated on purpose, so a hand-edited CRLF file still parses.
+    # write_atomic rather than open(..., "w"): the truncating write erases the
+    # body on any failure, and the body is the part of an issue with no other
+    # copy. It holds the bytes too - UTF-8 and LF, the file format being the
+    # API and its bytes part of it, a tool writing CRLF beside an agent's
+    # editor writing LF being a diff on every line of a file nobody touched.
+    # Reads stay translated on purpose, so a hand-edited CRLF file still parses.
     file_path = os.path.join(path, f"{issue['id']}.md")
-    with open(file_path, "w", encoding="utf-8", newline="\n") as md_file:
-        md_file.write(content)
-    return file_path
+    return write_atomic(file_path, content)
 
 
 def read_issue(id: str) -> dict | None:

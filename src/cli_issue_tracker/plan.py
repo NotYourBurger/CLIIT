@@ -29,6 +29,7 @@ import sys
 
 from cli_issue_tracker.storage import require_issue_dir
 from cli_issue_tracker.storage import split_sections
+from cli_issue_tracker.storage import write_atomic
 
 WORK = "work"
 
@@ -124,11 +125,14 @@ Keep this current as you work:
 
 
 def write_plan(id: str, title: str, blockers=()) -> str:
-    """Seed one plan. The only write in this module, and it happens once."""
+    """Seed one plan. The only write in this module, and it happens once.
+
+    Through `write_atomic` for a reason the issue does not have: a 0-byte plan
+    is worse than no plan, because `read_plan` returns one for it and `start`
+    will not reseed over a plan that exists, so the checkpoint list is gone
+    with nothing that can bring it back."""
     path = os.path.join(work_dir(create=True), f"{id}.md")
-    with open(path, "w", encoding="utf-8", newline="\n") as md_file:
-        md_file.write(seed(id, title, blockers))
-    return path
+    return write_atomic(path, seed(id, title, blockers))
 
 
 def bullets(text: str) -> list:

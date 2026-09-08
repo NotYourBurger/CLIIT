@@ -182,6 +182,11 @@ obvious from the code:
   contract. A batch `set` with one bad id still writes the good ones, then exits 1.
 - **Validate before writing.** Bad status/priority/blocker exits before anything
   touches disk; a rejected `create` must not burn an id.
+- **Every rewrite goes through `storage.write_atomic`.** `open(path, "w")`
+  truncates first, so a write that fails leaves a 0-byte file where the issue
+  was — and the body is the part with no other copy. Temp file beside the
+  target, then `os.replace`. Appending (`append_event`, `init`) already has the
+  property and must not grow this (ISS-038).
 - **UTF-8 and LF everywhere, explicitly.** This machine defaults to cp1252 and to
   CRLF, and the same shape of bug landed four times. Every `open()` and
   `subprocess.run(text=True)` must pass `encoding="utf-8"`, and every write-mode
