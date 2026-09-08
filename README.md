@@ -1,37 +1,252 @@
-# cli-issue-tracker
+# cli-issue-tracker - a Markdown issue tracker that lives in your git repo
 
-A small issue tracker that lives in your repo. Issues are plain Markdown files
-in a `.issues/` folder, so they version with your code and read fine without
-the tool.
+[![ci](https://github.com/NotYourBurger/cli-issue-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/NotYourBurger/cli-issue-tracker/actions/workflows/ci.yml)
+[![python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)](https://www.python.org/)
+[![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-## Who it is for
+**A command-line issue tracker whose entire database is Markdown files in your
+own repository.** One `.md` file per issue in a `.issues/` folder, so the
+backlog versions with the code, arrives with `git pull`, gets reviewed in the
+pull request that closes it, and still reads as prose in six months when the
+tool is gone.
 
-One repo, one backlog, and the people — or agents — already working in it. The
-tracker is worth having if you want the issue list to arrive with `git pull`,
-to be reviewable in a pull request beside the change that closed it, and to
-still read as prose in six months when the tool is gone. It is not worth having
-if the backlog is shared by people who do not share the repo.
-
-Half the design is for coding agents specifically. Every read verb has a
-`--json` form, `issue next` answers "what should I work on" in one call with
-the blocking rule already applied, and `issue start` seeds a work plan the
-agent keeps ticked as it goes — so a session that dies at a usage limit leaves
-its state on disk rather than in a lost context window.
-
-## Thirty seconds
+No server, no account, no web UI, no database, nothing running between your
+commands. git is the sync and your text editor is the fallback. Built for one
+repo, one backlog, and the people - or AI coding agents - already working in
+it.
 
 ```bash
-uv sync
-issue init                          # .issues/ here; the workflow rule goes into CLAUDE.md if you keep one
-issue create "Login drops the session" "Cookie vanishes on redirect." -p high -l bug
-issue next                          # ISS-001 - the one to work on, and why
-issue start ISS-001                 # seeds .issues/work/ISS-001.md; keep it ticked
+uv tool install git+https://github.com/NotYourBurger/cli-issue-tracker
+cd your-project
+issue init
+issue create "Login drops the session" "The cookie vanishes on redirect." -p high
+issue next
+```
+
+## Contents
+
+- [Why a Markdown issue tracker](#why-a-markdown-issue-tracker)
+- [Install](#install)
+- [Quickstart: your first issue](#quickstart-your-first-issue)
+- [For AI coding agents: Claude Code, Codex, Cursor](#for-ai-coding-agents-claude-code-codex-cursor)
+- [Reporting a bug or asking a question](#reporting-a-bug-or-asking-a-question)
+- [Non-goals](#non-goals)
+- [Command reference](#command-reference)
+- [Closing](#closing)
+- [Work plans](#work-plans)
+- [Event log](#event-log)
+- [Checking the files](#checking-the-files)
+- [File format](#file-format)
+- [Layout](#layout)
+- [Status](#status)
+- [Stability](#stability)
+- [License](#license)
+
+## Why a Markdown issue tracker
+
+Because the tracker most projects reach for is a website, and a backlog on a
+website is one more thing to log into, one more thing to keep in sync with the
+code, and one more thing that is gone when whoever hosts it is.
+
+Keeping issues as plain files in the repo is worth it if you want:
+
+- **the issue list to arrive with `git pull`** - no export, no sync, no API
+- **the issue reviewable in the pull request that closes it**, beside the diff
+- **a backlog that still reads in six months** as ordinary Markdown, with or
+  without this tool installed
+- **no account and no network** between you and your own to-do list
+- **an issue tracker your coding agent can read and write** in one call, in
+  JSON, without a token
+
+It is not worth it if the backlog is shared by people who do not share the
+repo. That is the honest edge, and there are more of them under
+[Non-goals](#non-goals).
+
+## Install
+
+You need **Python 3.10 or newer**. Everything else comes with the tool.
+
+### Step 1: install uv
+
+[uv](https://docs.astral.sh/uv/) is a Python installer that handles the Python
+part for you. One line, and no Python knowledge needed.
+
+**macOS and Linux**
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+**Windows (PowerShell)**
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+Already have [pipx](https://pipx.pypa.io/)? It does the same job - use
+`pipx install` in place of `uv tool install` below and skip this step.
+
+### Step 2: install cli-issue-tracker
+
+```bash
+uv tool install git+https://github.com/NotYourBurger/cli-issue-tracker
+```
+
+That installs one command, `issue`, onto your PATH, in an isolated environment
+of its own. Check it:
+
+```bash
+issue --version
+```
+
+If your shell cannot find `issue`, open a new terminal - the installer adds a
+directory to your PATH, and the shell you already had open has not read it.
+
+Not on PyPI yet, so there is no `pip install cli-issue-tracker`. That lands
+with the first tagged release.
+
+**Afterwards:**
+
+```bash
+uv tool upgrade cli-issue-tracker     # get the newest version
+uv tool uninstall cli-issue-tracker   # remove it
+```
+
+**Working on the tracker itself** rather than using it? Clone the repository
+and run `uv sync`, then use it in place with `uv run issue <command>`.
+
+## Quickstart: your first issue
+
+The whole loop is six commands. Run them in a real project - any directory, git
+repo or not.
+
+**1. Create the tracker.**
+
+```bash
+cd path/to/your-project
+issue init
+```
+
+That makes a `.issues/` folder here. If the repo keeps a `CLAUDE.md` or an
+`AGENTS.md`, `init` appends the workflow rule to it so an agent follows the
+same loop you do; if it keeps neither it says so on screen and writes nothing.
+`issue init --agents` writes an `AGENTS.md` if you want one.
+
+**2. File something.**
+
+```bash
+issue create "Login drops the session" "The cookie vanishes on redirect." -p high -l bug
+```
+
+First argument is the title, second is the description. `-p` is the priority -
+`high`, `medium` or `low` - and `-l` is a label, repeated for more than one.
+This writes `.issues/ISS-001.md`, an ordinary Markdown file you can open and
+edit by hand.
+
+**3. See the backlog.**
+
+```bash
+issue list
+```
+
+An aligned table, printed least urgent first, so the row worth your attention
+is the one nearest your prompt.
+
+**4. Ask what to work on.**
+
+```bash
+issue next
+```
+
+One issue, chosen: work already started before work not started, then priority,
+then the oldest. Anything closed, blocked, or owned by somebody else is never
+offered. It only reads - asking what to do next does not decide it for you.
+
+**5. Start it.**
+
+```bash
+issue start ISS-001
+```
+
+Marks it in progress and seeds a [work plan](#work-plans) at
+`.issues/work/ISS-001.md` - a checklist you keep ticked as you go, so an
+interrupted session leaves its state on disk instead of in your head.
+
+**6. Close it with proof, and commit.**
+
+```bash
 issue close ISS-001 --completed -m "SameSite was unset on the redirect." \
-  --test "uv run python tests/all.py"   # closing takes a reason and proof
+  --test "uv run python tests/all.py"
+
 git add .issues && git commit -m "ISS-001: set SameSite on the session cookie"
 ```
 
-That is the whole loop. Everything below is the reference for it.
+Closing takes a reason and evidence - a commit hash, a test command, or a URL.
+An issue cannot be closed by editing a field, and that is deliberate.
+
+**Where did it all go?** Nowhere clever:
+
+```bash
+cat .issues/ISS-001.md
+```
+
+Frontmatter at the top, your prose underneath. See [File
+format](#file-format) - and edit it by hand whenever you like, because the tool
+reads back what you wrote and preserves the fields it does not recognise.
+
+That is the whole thing. Everything below is the reference for it.
+
+## For AI coding agents: Claude Code, Codex, Cursor
+
+Half the design is for coding agents specifically, and it is the half that is
+hard to bolt onto a tracker living behind a web API.
+
+- **Every read verb has a `--json` form**, and stdout is only ever that JSON -
+  every diagnostic goes to stderr, so a pipe into `jq` is always safe.
+- **`issue next` is one call**, not five. It applies the ranking, the blocking
+  rule and the ownership rule and hands back the single issue to work on, so an
+  agent does not spend a context window deciding.
+- **`issue start` seeds a work plan** the agent keeps ticked as it works, so a
+  session that dies at a usage limit leaves its progress on disk rather than in
+  a context window nobody can read back.
+- **Two agents in one worktree do not collide.** `issue claim` and
+  `issue next --claim` take the tracker's lock, so exactly one caller is told
+  it won, and id allocation is exclusive at the filesystem level.
+- **`issue event`** is an append-only log of what a running process observed,
+  kept beside the plan of what it decided.
+
+A whole agent loop:
+
+```bash
+export ISSUE_USER=agent-1        # who this run acts as
+issue brief --json               # what is going on in this project at all
+issue next --json --claim        # one issue, ranked and claimed, race-safe
+issue start ISS-001              # seeds .issues/work/ISS-001.md
+issue event ISS-001 "worker started" --type lifecycle
+issue close ISS-001 --completed -m "..." --test "uv run python tests/all.py"
+```
+
+`issue init` writes the workflow rule into `CLAUDE.md` or `AGENTS.md`, so the
+agent reads it without being told. The details are under [Work
+plans](#work-plans) and [Event log](#event-log).
+
+## Reporting a bug or asking a question
+
+**File it on [GitHub Issues](https://github.com/NotYourBurger/cli-issue-tracker/issues).**
+That is the door for anybody outside this repo: it needs no clone, no id and no
+fork. `.issues/` is the source of truth behind it. A maintainer files what
+arrives as `.issues/ISS-NNN.md` and closes the GitHub issue naming that id, so
+a report is tracked in one place rather than in two that drift. Nothing is
+mirrored back the other way on purpose - a stale mirror reads as authoritative,
+and a door does not.
+
+**A pull request may edit an existing `.issues/*.md`, but must not create one.**
+Ids are allocated on trunk only. An id is one past the highest one visible, so
+two forks each allocate `ISS-052`, both files are valid, and git merges them
+with no conflict to show you - the one failure here that is silent. Editing a
+file that already exists is an ordinary conflict when it is one at all. If your
+change needs an issue that does not exist yet, open the GitHub issue and it
+will be filed on trunk before your pull request lands.
 
 ## Non-goals
 
@@ -54,13 +269,8 @@ These are edges of the design, not gaps in it:
 - **Not a replacement for a real tracker at scale.** Every command reads every
   file in `.issues/`. That is fine at hundreds and it is meant to be.
 
-## Install
+## Command reference
 
-```bash
-uv sync
-```
-
-## Usage
 
 ```bash
 issue init                          # create .issues/ in the current directory
