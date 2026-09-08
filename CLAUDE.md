@@ -281,7 +281,13 @@ Features are specified before they are built: `docs/PRD/` holds the PRD,
 issue id (`ISS-019: issue next - the one issue to work on now`). New behaviour
 lands with its own `tests/test_<thing>.py` — a script with a `demo()` that
 asserts and prints `ok`, using `tests/helpers.py:run()` to capture exit code,
-stdout and stderr. README.md is kept in sync as the user-facing spec.
+stdout and stderr. A check that needs a real corpus reads `tests/fixtures/`
+(`helpers.FIXTURES`) and never this repo's own `.issues/`: the suite has to pass
+on a clone whose tracker is somebody else's, so filing an issue while working
+must not be able to fail a check about somebody else's change (ISS-049). The
+real `.issues/` is still checked, by `uv run issue check` in CI, where the
+repository state under test is the branch that changed it.
+README.md is kept in sync as the user-facing spec.
 
 ## Work plans
 
