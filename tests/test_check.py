@@ -221,6 +221,19 @@ if __name__ == "__main__":
             ], found
             assert all(item["problem"] for item in found), found
 
+            # 7. A .md in .issues/ that is not an issue at all. Every reader
+            #    goes through parse_issue and skips what it rejects, so this
+            #    file was invisible to every command - and `create` reserves
+            #    its id by creating the file empty and filling it in, so a
+            #    create that dies in that window leaves exactly this shape
+            #    (ISS-039). Reserved and then abandoned is a 0-byte file.
+            burnt = os.path.join(issues, "ISS-906.md")
+            os.close(os.open(burnt, os.O_CREAT | os.O_WRONLY))
+            code, out, err = run(check)
+            assert code == 1, (code, out, err)
+            assert "ISS-906" in err and "not an issue" in err, err
+            os.unlink(burnt)
+
             # 8. --plans is the other half of this verb: a report, not a
             #    check. One row per plan, on stdout, exit 0 - the threshold
             #    ISS-031 wrote down is a human decision taken once, not a

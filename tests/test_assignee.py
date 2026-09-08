@@ -2,10 +2,17 @@
 
 The branches worth checking are the ones the other fields do not have: claim
 is the only write with a precondition, so it has three ways to fail and one
-way to succeed twice; `try_claim` under it is the write that closes the race,
-so the two things it must never do - overwrite an owner it read a moment ago,
-and believe its own write - are staged here rather than left to luck; the two filters contradict each other; and the ASSIGNEE
-column has to disappear on a repo that owns nothing.
+way to succeed twice; `try_claim` under it must never overwrite an owner it
+read a moment ago, which is staged here rather than left to luck; the two
+filters contradict each other; and the ASSIGNEE column has to disappear on a
+repo that owns nothing.
+
+What is *not* here any more is the other half of that: try_claim used to write
+and then read the file back, and this file staged the losing interleaving by
+standing in for the write with one that wrote somebody else's name. It does not
+need staging now - the read, the check and the write happen under the tracker
+lock, and tests/test_concurrency.py forces the interleaving with a second
+process instead of a stub (ISS-039).
 
 Run: uv run python tests/test_assignee.py
 """
@@ -16,7 +23,6 @@ import tempfile
 
 from helpers import close
 from helpers import run
-from cli_issue_tracker import issues
 from cli_issue_tracker.issues import (
     claim_issue,
     create_issue,
@@ -27,8 +33,6 @@ from cli_issue_tracker.issues import (
     view_issue,
 )
 from cli_issue_tracker.storage import parse_issue
-
-real_set_fields = issues.set_fields
 
 
 def read(tmp, id):
@@ -108,22 +112,8 @@ def demo():
             assert try_claim("ISS-001", "tahmid") is False
             assert read(tmp, "ISS-001") == before
 
-            # ...and it believes the file rather than its own write. Staged by
-            # standing in for the write with one that loses the race, because
-            # two processes interleaving is not a thing one script can arrange:
-            # whatever try_claim asked for, the name in the file is the answer.
-            run(set_fields, ["ISS-001"], None, (), (), (), (), "")
-            issues.set_fields = lambda ids, *a, **kw: real_set_fields(
-                ids, *a, **{**kw, "assignee": "codex-1"}
-            )
-            try:
-                assert try_claim("ISS-001", "tahmid") is False
-            finally:
-                issues.set_fields = real_set_fields
-            assert read(tmp, "ISS-001")["assignee"] == "codex-1"
-
-            # The same call succeeds once the file agrees, so the two checks
-            # above are refusing for the reason claimed and not just refusing.
+            # The same call succeeds once nobody owns it, so the check above is
+            # refusing for the reason claimed and not just refusing.
             run(set_fields, ["ISS-001"], None, (), (), (), (), "")
             assert try_claim("ISS-001", "tahmid") is True
             assert read(tmp, "ISS-001")["assignee"] == "tahmid"

@@ -1,15 +1,22 @@
+import contextlib
 import os
 import sys
 import tempfile
 from datetime import datetime
 
 ISSUES_DIR = ".issues"
+LOCK_FILE = ".lock"
 
 # The keys that keep their documented order at the top of every file; anything
 # a human added follows. One copy, because `check` compares a file against what
 # `write_issue` would produce, and a second copy of this tuple is a false
 # finding on every issue in the repo the day one of them is edited.
 FIELD_ORDER = ("id", "status", "created_at", "updated_at")
+
+
+class Busy(Exception):
+    """The tracker lock is held by another process, and the caller asked not to
+    wait for it. Only a non-blocking `locked()` raises this."""
 
 def id_prefix() -> str:
     """The letters in front of every id. One source, read by next_id when it
@@ -63,6 +70,75 @@ def require_issue_dir() -> str:
         print("Please Run - issue init - to initialize the project first", file=sys.stderr)
         sys.exit(1)
     return path
+
+@contextlib.contextmanager
+def locked(blocking=True):
+    """Hold the tracker's write lock for the body, or raise `Busy` if another
+    process has it and `blocking` is false.
+
+    Every write here is read-validate-modify-write with a shell round trip's
+    worth of nothing in between, so two agents in one worktree interleave and
+    one of them loses. `write_atomic` stops a *torn* file; two well-formed
+    writes racing is a different failure and ordering them is the only answer
+    (ISS-039).
+
+    An OS advisory lock rather than an O_EXCL lock file with a staleness
+    timeout, which is the other twenty-line option: the kernel drops this one
+    when the holder dies, so a killed agent cannot wedge the tracker for
+    everyone - where a timeout has to guess how long is too long, and two
+    processes deciding the same lock is stale at the same moment is the bug it
+    was meant to fix wearing a hat.
+
+    The two platform calls are the same lock with different spellings. Neither
+    is reentrant - on Windows the lock is per-fd and taking it twice in one
+    process fails - so nothing under a `locked()` may take it again.
+
+    ponytail: one lock for the whole tracker, not one per issue. This is a CLI
+    run from a prompt and contention is two agents, not two hundred; a
+    per-issue lock file is the upgrade if that ever stops being true."""
+    directory = require_issue_dir()
+    # Opened "a" so the file is created if absent and never truncated: it holds
+    # nothing, the lock is the open handle. Not `.md`, so every reader here -
+    # the id scan, `list`, `check` - is already blind to it.
+    with open(os.path.join(directory, LOCK_FILE), "a", encoding="utf-8", newline="\n") as handle:
+        _take(handle.fileno(), blocking)
+        try:
+            yield
+        finally:
+            _release(handle.fileno())
+
+
+if os.name == "nt":
+    import msvcrt
+
+    def _take(fd, blocking):
+        # One byte at offset 0 is the whole lock; the file's contents are
+        # irrelevant. Windows locks from the current position and "a" opens at
+        # the end, so say offset 0 rather than relying on the file being empty.
+        # LK_LOCK retries for about ten seconds and then raises, which for a
+        # command run from a prompt is already pathological.
+        os.lseek(fd, 0, os.SEEK_SET)
+        try:
+            msvcrt.locking(fd, msvcrt.LK_LOCK if blocking else msvcrt.LK_NBLCK, 1)
+        except OSError as error:
+            raise Busy("another issue command holds the tracker lock") from error
+
+    def _release(fd):
+        os.lseek(fd, 0, os.SEEK_SET)
+        msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+
+else:
+    import fcntl
+
+    def _take(fd, blocking):
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | (0 if blocking else fcntl.LOCK_NB))
+        except OSError as error:
+            raise Busy("another issue command holds the tracker lock") from error
+
+    def _release(fd):
+        fcntl.flock(fd, fcntl.LOCK_UN)
+
 
 def split_file(file_path: str) -> tuple[dict, str] | None:
     """One frontmatter file as (fields, body), or None if it has no frontmatter.

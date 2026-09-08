@@ -44,7 +44,7 @@ change:
 layers under them, imported in this order and never the other way:
 `storage.py` (locating `.issues/`, the frontmatter format: `split_file` /
 `join_file`, with `parse_issue` / `write_issue` as the issue-shaped wrapper
-around them, and the body format: `split_sections`) → `fields.py` (reading one
+around them, the body format: `split_sections`, and the write lock: `locked`) → `fields.py` (reading one
 parsed issue, and the status/priority tuples) → `deps.py` (what blocks what) →
 `plan.py` (what a work plan is: the workflow rule, the seed, the reader, and
 `git_context`) → `validate.py` (every check that exits before a write) →
@@ -182,6 +182,14 @@ obvious from the code:
   contract. A batch `set` with one bad id still writes the good ones, then exits 1.
 - **Validate before writing.** Bad status/priority/blocker exits before anything
   touches disk; a rejected `create` must not burn an id.
+- **Two writers are ordered by `storage.locked`, not by hoping.** Every write
+  is read-validate-modify-write, so two agents in one worktree interleave and
+  one loses. `try_claim` holds `.issues/.lock` — an OS advisory lock, so the
+  kernel drops it when the holder dies and no killed process wedges the
+  tracker. It is not reentrant: nothing under a `locked()` may take it again,
+  which is why `set_fields` does not. Id allocation gets the stronger answer
+  instead — `convert_id.reserve_id` creates the file `O_EXCL`, so the loser
+  retries with the next number rather than writing over the winner (ISS-039).
 - **Every rewrite goes through `storage.write_atomic`.** `open(path, "w")`
   truncates first, so a write that fails leaves a 0-byte file where the issue
   was — and the body is the part with no other copy. Temp file beside the

@@ -8,3 +8,8 @@ wheels/
 
 # Virtual environments
 .venv
+
+# The tracker's write lock. An empty file whose only content is the OS lock
+# held on it, recreated on demand - committing it would be committing nothing
+# and conflicting over it.
+.issues/.lock

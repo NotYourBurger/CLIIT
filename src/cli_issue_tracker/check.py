@@ -186,7 +186,15 @@ def check(as_json=False, plans=False):
                 (name, "would not survive a rewrite - `issue set` on it loses or moves text")
             )
         issue = parse_issue(file_path)
-        if issue is not None:
+        if issue is None:
+            # Every reader here goes through parse_issue and skips what it
+            # rejects, which is right for `list` and silence everywhere else:
+            # nothing had a reason to say the file is there. `create` now
+            # reserves its id by creating the file empty and filling it in
+            # (ISS-039), so a create that dies in that window leaves exactly
+            # this - a burnt id and a file no command will ever mention.
+            findings.append((name, "is not an issue - no frontmatter, or missing id/status/title"))
+        else:
             id = issue["id"]
             if id in file_by_id:
                 findings.append(

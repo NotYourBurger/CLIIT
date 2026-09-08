@@ -22,7 +22,7 @@ import sys
 from rich.markdown import Markdown
 from rich.table import Table
 
-from cli_issue_tracker.convert_id import next_id
+from cli_issue_tracker.convert_id import reserve_id
 from cli_issue_tracker.fields import PRIORITIES
 from cli_issue_tracker.fields import PRIORITY_ORDER
 from cli_issue_tracker.fields import REASONS
@@ -72,6 +72,7 @@ from cli_issue_tracker.render import plan_lines
 from cli_issue_tracker.render import print_table
 from cli_issue_tracker.render import resolved_lines
 from cli_issue_tracker.storage import require_issue_dir
+from cli_issue_tracker.storage import locked
 from cli_issue_tracker.storage import now
 from cli_issue_tracker.storage import parse_issue
 from cli_issue_tracker.storage import read_issue
@@ -89,7 +90,10 @@ def create_issue(title: str, description: str, priority: str = "medium", labels=
     labels = clean_labels(labels)
     path = require_issue_dir()
     issue = {
-        "id": next_id(path),
+        # Reserved, not just named: O_EXCL creates the file here so a second
+        # create running alongside cannot be handed the same number and write
+        # over this one. write_issue fills in the empty file it leaves.
+        "id": reserve_id(path),
         "created_at": now(),
         "status": "open",
         "priority": priority,
@@ -1108,22 +1112,19 @@ def try_claim(id, who):
     a bool that is only correct when the caller looked first is a bool with a
     footgun in it, and the read is one file.
     """
-    issue = read_issue(id)
-    if issue is None or issue["status"] == "closed" or not claimable_by(issue, who):
-        return False
-
-    set_fields([id], assignee=who, quiet=True)
-
-    # Check-then-write is not atomic and there is no lock to take. Read the
-    # file back: whichever order two writes land in, exactly one caller reads
-    # its own name back, so exactly one is told it succeeded and the other goes
-    # and picks the next row instead of starting the same work.
-    #
-    # ponytail: this closes the window, it does not remove it - a reader
-    # interleaved between another writer's two operations can still be told the
-    # wrong thing, and the fix if it ever matters is an O_EXCL claim file, not
-    # a lock.
-    return (read_issue(id) or {}).get("assignee") == who
+    # The read, the check and the write are one operation or they are a race.
+    # Reading the file back afterwards was the previous answer and it does not
+    # hold: it assumes the two writes are adjacent, and a third operation
+    # fitting between a writer's write and its read-back tells both callers
+    # they won - which is the one outcome `next --claim` exists to prevent
+    # (ISS-039). Nothing in here may take the lock again; `set_fields`
+    # deliberately does not.
+    with locked():
+        issue = read_issue(id)
+        if issue is None or issue["status"] == "closed" or not claimable_by(issue, who):
+            return False
+        set_fields([id], assignee=who, quiet=True)
+        return True
 
 
 def claim_issue(id, by=None):

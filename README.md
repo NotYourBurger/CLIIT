@@ -183,9 +183,9 @@ for you, and that is also what makes it safe to ask twice.
 `issue next --claim` is the version that decides, and it is a flag precisely so
 the default stays a question. The ownership filter above narrows the window
 between two agents asking; it cannot close it, because reading is not taking.
-`--claim` closes it the way `issue claim` does — write the assignee, read the
-file back, and exactly one caller sees its own name — and the loser then walks
-to the next candidate rather than exiting. That retry is the whole point: an
+`--claim` closes it the way `issue claim` does — one caller inside the tracker
+lock at a time — and the loser then walks to the next candidate rather than
+exiting. That retry is the whole point: an
 agent that asked for something it could start is owed a row, and a `--claim`
 that gave up on the first collision would be worth no more than the plain
 `next` it replaced. N agents calling it under N names come away with N distinct
@@ -308,11 +308,18 @@ already what you asked for. All three are one write: `assign` is
 `issue set ISS-021 --assignee codex-1` and `release` is the same with an empty
 value, so the messages and the behaviour cannot drift apart.
 
-Check-then-write is not atomic and there is no lock to take, so `claim` writes
-and then reads the file back: if the name that comes back is not yours, you
-lost the race, and it says who won and exits 1. Whichever order two writes
-land in, exactly one caller reads its own name back, so exactly one is told it
-succeeded.
+Check-then-write is not atomic, so `claim` does the read, the check and the
+write while holding the tracker's lock — `.issues/.lock`, an empty file whose
+only content is the OS lock held on it. Exactly one caller is inside at a time,
+so exactly one is told it succeeded and the other is told who won and exits 1.
+
+It used to write and then read the file back instead, on the reasoning that
+whichever order two writes land in, exactly one caller reads its own name back.
+That holds only when the two writes are adjacent: a third operation fitting
+between a writer's write and its read-back told *both* agents they had won,
+which is the one outcome this exists to prevent (ISS-039). The lock is the
+kernel's, not a file with a timestamp in it, so a killed agent releases it
+rather than wedging the tracker for everyone after it.
 
 The name is not verified and cannot be — an issue is a file in a git repo, and
 anyone who can write the file can write any name into it. The audit trail
@@ -687,9 +694,16 @@ horizontal rules all survive a read/write round trip. A closed issue also
 carries `reason`, `closed_at`, `message` and `evidence` — the last one is a JSON
 array, because frontmatter has no list type and the comma-joining that `labels`
 and `blocked_by` use would cut a `--test` command in half at its first comma. Frontmatter fields the tool
-does not know about are kept too, so you can add your own by hand. Ids are
-allocated as one past the highest existing id with the same prefix, so deleting
-an issue never reuses a live id.
+does not know about are kept too, so you can add your own by hand.
+
+Ids are allocated as one past the highest existing id with the same prefix, so
+deleting an issue never reuses a live id — and the file is created empty and
+exclusively at that moment rather than when the issue is written, so a second
+`create` running alongside cannot be handed the same number. Asking who is
+highest and then writing was two steps with a gap in it: both callers got the
+same answer and the second wrote over the first, two "has been created" lines
+for one file (ISS-039). A create that dies inside that window leaves a 0-byte
+`.md`, which every command skips and `issue check` names.
 
 Every file the tool writes goes out UTF-8 with LF line endings, on every
 platform, and `.gitattributes` pins `.issues/**/*.md` to `eol=lf` so a checkout
@@ -715,8 +729,8 @@ thing with its own identity. See [Work plans](#work-plans).
 | `validate.py`   | the checks that run before anything is written         |
 | `check.py`      | the checks that run over what is already written       |
 | `render.py`     | how output looks, human and `--json`                   |
-| `storage.py`    | finding `.issues/`, and the file format                 |
-| `convert_id.py` | allocating the next id                                 |
+| `storage.py`    | finding `.issues/`, the file format, and the write lock |
+| `convert_id.py` | allocating an id, and reserving its file so no one else gets it |
 | `init.py`       | creating `.issues/` here, and only here                |
 | `tests/`        | one script per thing that can break, plus the runner   |
 
@@ -742,7 +756,7 @@ file per thing that can break:
 | `test_labels.py`     | labels, the first field that merges instead of replacing    |
 | `test_search.py`     | matching, the filters that AND with it, and the exit code   |
 | `test_blockers.py`   | dependencies: one stored side, two read, and the bad edges  |
-| `test_assignee.py`   | ownership: the one write with a precondition, and the race  |
+| `test_assignee.py`   | ownership: the one write with a precondition                |
 | `test_next.py`       | the `next` ranking, every tie-breaker, ownership, empty case |
 | `test_close.py`      | closing: the reasons, the evidence rule, and what it refuses |
 | `test_plan.py`       | seeding, resuming, the blocked refusal, and a mangled plan  |
@@ -751,6 +765,7 @@ file per thing that can break:
 | `test_check.py`      | `issue check`, against files the tool did not write, and the real `.issues/` |
 | `test_convert_id.py` | id allocation, including independent prefix sequences         |
 | `test_encoding.py`   | that nothing reads or writes text at the platform default   |
+| `test_concurrency.py` | two writers in one worktree: the claim race and the id race |
 
 No framework: each file is a script with a `demo()` that asserts and prints
 `ok`, so `uv run python tests/test_search.py` runs one on its own and the

@@ -6,6 +6,10 @@
 # the next `git checkout` and `issue check` starts failing again on thirty-five
 # files nobody touched.
 #
-# Scoped to what the tool writes. The .py sources have the same working-tree
-# churn and no bug attached to it, so they keep whatever the clone decides.
+# Scoped to what the tool writes - which now includes the event logs, whose
+# first committed file lands with ISS-039. `append_event` writes LF and
+# json.loads tolerates a stray carriage return, so there is no bug attached
+# to that one - only the same diff on every line of a file nobody touched. The .py sources
+# have that churn too and keep whatever the clone decides.
 .issues/**/*.md text eol=lf
+.issues/**/*.jsonl text eol=lf
