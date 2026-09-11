@@ -37,5 +37,8 @@ The workflow refuses a tag that does not exactly equal `v` plus the version in
 wheel and source distribution, publishes that artifact through PyPI Trusted
 Publishing, and attaches the same files to a generated GitHub release.
 
-After the first publish succeeds, replace README's Git install example with
-`uv tool install cliit` and remove the "Not on PyPI yet" note.
+After pushing the tag, approve the `pypi` environment under **Review deployments**
+in the workflow run. Verify installation from PyPI in a clean environment after
+publishing succeeds, including both `issue --version` and `cliit --version`.
+
+The first release, `v0.1.0`, was published successfully on 2026-09-11.

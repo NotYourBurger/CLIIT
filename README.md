@@ -22,16 +22,20 @@ and share it through Git. No server or account required.
 
 ## Install
 
-Requires **Python 3.10+**, [uv](https://docs.astral.sh/uv/getting-started/installation/),
-and Git for the source installation below. Works on Linux, macOS, and Windows.
+Requires **Python 3.10+**. Works on Linux, macOS, and Windows.
+Install from [PyPI](https://pypi.org/project/cliit/) with
+[uv](https://docs.astral.sh/uv/getting-started/installation/):
 
 ```bash
-uv tool install git+https://github.com/NotYourBurger/CLIIT
+uv tool install cliit
 issue --version
 ```
 
 Both `issue` and `cliit` run the same CLI. To update, run `uv tool upgrade cliit`.
 If your shell cannot find `issue`, run `uv tool update-shell` and reopen your terminal.
+
+Alternatively, run `python -m pip install cliit` inside an activated virtual environment.
+Git is optional for installation; use it to share issues and view their history.
 
 ## Quickstart
 
