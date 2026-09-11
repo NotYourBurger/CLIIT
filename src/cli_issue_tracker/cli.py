@@ -31,7 +31,7 @@ def show_version(asked: bool):
     this flag exists to prevent (ISS-046).
     """
     if asked:
-        print(installed_version("cli-issue-tracker"))
+        print(installed_version("cliit"))
         raise typer.Exit()
 
 
@@ -118,7 +118,9 @@ def search(
 @app.command("init")
 def init_project(
     agents: bool = typer.Option(
-        False, "--agents", help="Write AGENTS.md if the repo has no agent instructions file"
+        False,
+        "--agents",
+        help="Configure repository instructions for Codex and Claude Code",
     ),
 ):
     init(agents)

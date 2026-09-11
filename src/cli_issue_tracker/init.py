@@ -16,6 +16,16 @@ from cli_issue_tracker.storage import local_issues_dir
 # reading two files is exactly the case one of them exists for.
 PROJECT_FILES = ("CLAUDE.md", "AGENTS.md")
 
+# Claude Code does not discover AGENTS.md itself. When --agents asks us to
+# establish the convention from scratch, this import keeps AGENTS.md as the
+# single shared copy while putting it on Claude's documented discovery path.
+CLAUDE_IMPORT = "@AGENTS.md\n"
+AGENTS_POINTER = """# Agent instructions
+
+Read `CLAUDE.md` before working in this repository. It contains the shared
+project instructions and issue workflow.
+"""
+
 HEADING = "## Work plans"
 
 TOOLS_HEADING = "## Issue tracker"
@@ -46,23 +56,43 @@ def write_rule(agents=False):
     `init` after a pull is normal, and a rule that stacks up nine times is a
     file nobody finishes reading.
 
-    Nothing is created when neither file exists. A tool that invents a
-    CLAUDE.md in a repo that never had one is making a decision about that
-    repo's conventions that it has no standing to make - but it was making that
-    decision by saying nothing at all, so now it says so and takes `--agents`
-    from anyone who wants the file. AGENTS.md and not a choice of the two: it
-    is the name that is not one vendor's, and every agent that reads CLAUDE.md
-    reads it as well."""
+    Nothing is created unless --agents asks for the convention. In that case
+    AGENTS.md carries the shared instructions and CLAUDE.md imports it: Codex
+    discovers the former, while Claude Code documents only the latter. The
+    import is the seam between the two names and leaves one body to maintain.
+
+    Existing files remain authoritative. We append to whichever ones a repo
+    already keeps, and --agents fills in a missing discovery file without
+    replacing or redirecting instructions that were already there."""
     names = [name for name in PROJECT_FILES if os.path.isfile(os.path.join(os.getcwd(), name))]
     if not names:
         if not agents:
             print(
                 "No CLAUDE.md or AGENTS.md here, so the agent instructions were not written"
-                " - `issue init --agents` writes AGENTS.md",
+                " - `issue init --agents` configures Codex and Claude Code",
                 file=sys.stderr,
             )
             return
         names = ["AGENTS.md"]
+
+    if agents:
+        claude_path = os.path.join(os.getcwd(), "CLAUDE.md")
+        agents_path = os.path.join(os.getcwd(), "AGENTS.md")
+        if names == ["CLAUDE.md"]:
+            # The repo already chose CLAUDE.md as its source. Point Codex at
+            # it rather than copying the body into a second file that drifts.
+            with open(agents_path, "w", encoding="utf-8", newline="\n") as file:
+                file.write(AGENTS_POINTER)
+            print("Codex pointer added to AGENTS.md")
+        elif "AGENTS.md" not in names:
+            names.append("AGENTS.md")
+        if not os.path.isfile(claude_path):
+            with open(claude_path, "w", encoding="utf-8", newline="\n") as file:
+                file.write(CLAUDE_IMPORT)
+            print("Claude Code import added to CLAUDE.md")
+        elif "CLAUDE.md" not in names:
+            names.append("CLAUDE.md")
+
     for name in names:
         path = os.path.join(os.getcwd(), name)
         # Not `open(path)`: --agents names a file that is not there yet, and
@@ -71,6 +101,11 @@ def write_rule(agents=False):
         if os.path.isfile(path):
             with open(path, "r", encoding="utf-8") as file:
                 text = file.read()
+        # A CLAUDE.md created above already imports the blocks from AGENTS.md.
+        # Repeating them below the import would put the same instructions in
+        # Claude's context twice and bring the drift problem back.
+        if name == "CLAUDE.md" and text == CLAUDE_IMPORT:
+            continue
         for heading, body in ((HEADING, rule_text()), (TOOLS_HEADING, TOOLS)):
             if body.splitlines()[0] in text:
                 continue

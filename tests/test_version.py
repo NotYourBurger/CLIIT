@@ -34,7 +34,7 @@ def demo():
     # not the other is exactly what this catches.
     from importlib.metadata import version
 
-    installed = version("cli-issue-tracker")
+    installed = version("cliit")
 
     result = CliRunner().invoke(app, ["--version"])
     assert result.exit_code == 0, result.output

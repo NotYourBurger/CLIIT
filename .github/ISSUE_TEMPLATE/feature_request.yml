@@ -1,0 +1,36 @@
+name: Feature request
+description: A focused improvement to the CLI, file format, or agent workflow.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the problem before the proposed command or implementation.
+        The tracker deliberately stays small, local, and Markdown-native, so
+        requests are evaluated against the non-goals in README.md.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What is difficult today, and who encounters it?
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: What should become possible? A short command example helps.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: How do you handle this now, and why is that insufficient?
+  - type: checkboxes
+    id: fit
+    attributes:
+      label: Project fit
+      options:
+        - label: I checked README's Non-goals and this request does not knowingly conflict with them.
+          required: true

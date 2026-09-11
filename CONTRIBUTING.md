@@ -15,7 +15,7 @@ this file, they win and this file is the bug.
 ## Three things to know before you open a pull request
 
 **Bugs and questions go to [GitHub
-Issues](https://github.com/NotYourBurger/cli-issue-tracker/issues)**, not to a
+Issues](https://github.com/NotYourBurger/CLIIT/issues)**, not to a
 file in `.issues/`. It needs no clone and no fork.
 
 **A pull request may edit an existing `.issues/*.md`, but must not create

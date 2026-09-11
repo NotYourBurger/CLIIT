@@ -1,10 +1,11 @@
 [project]
-name = "cli-issue-tracker"
+name = "cliit"
 version = "0.1.0"
-description = "An issue tracker whose whole database is .issues/*.md, one Markdown file per issue"
+description = "CLIIT is a Markdown-native issue tracker for developers and coding agents"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
+keywords = ["cliit", "issue-tracker", "markdown", "git", "cli", "ai-agents"]
 authors = [
     { name = "Tahmid Khan Alim", email = "tahmidkhanofficial@gmail.com" }
 ]
@@ -28,13 +29,28 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/NotYourBurger/cli-issue-tracker"
-Repository = "https://github.com/NotYourBurger/cli-issue-tracker"
-Issues = "https://github.com/NotYourBurger/cli-issue-tracker/issues"
+Homepage = "https://github.com/NotYourBurger/CLIIT"
+Repository = "https://github.com/NotYourBurger/CLIIT"
+Issues = "https://github.com/NotYourBurger/CLIIT/issues"
+Changelog = "https://github.com/NotYourBurger/CLIIT/blob/main/CHANGELOG.md"
 
 [project.scripts]
 issue = "cli_issue_tracker.cli:app"
+cliit = "cli_issue_tracker.cli:app"
 
 [build-system]
-requires = ["uv_build>=0.11.28,<0.12.0"]
+requires = ["uv_build>=0.12.10,<0.13.0"]
 build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "cli_issue_tracker"
+source-include = [
+    "AGENTS.md",
+    "CHANGELOG.md",
+    "CLAUDE.md",
+    "CODE_OF_CONDUCT.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
+    "docs/**",
+    "tests/**",
+]

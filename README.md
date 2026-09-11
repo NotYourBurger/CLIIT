@@ -1,11 +1,12 @@
-# cli-issue-tracker - a Markdown issue tracker that lives in your git repo
+# CLIIT — a Markdown issue tracker that lives in your git repo
 
-[![ci](https://github.com/NotYourBurger/cli-issue-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/NotYourBurger/cli-issue-tracker/actions/workflows/ci.yml)
+[![ci](https://github.com/NotYourBurger/CLIIT/actions/workflows/ci.yml/badge.svg)](https://github.com/NotYourBurger/CLIIT/actions/workflows/ci.yml)
 [![python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)](https://www.python.org/)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-**A command-line issue tracker whose entire database is Markdown files in your
-own repository.** One `.md` file per issue in a `.issues/` folder, so the
+**CLIIT (Command-Line Issue Tracker) keeps its entire database as Markdown
+files in your own repository.** One `.md` file per issue in a `.issues/`
+folder, so the
 backlog versions with the code, arrives with `git pull`, gets reviewed in the
 pull request that closes it, and still reads as prose in six months when the
 tool is gone.
@@ -16,9 +17,9 @@ repo, one backlog, and the people - or AI coding agents - already working in
 it.
 
 ```bash
-uv tool install git+https://github.com/NotYourBurger/cli-issue-tracker
+uv tool install git+https://github.com/NotYourBurger/CLIIT
 cd your-project
-issue init
+issue init --agents
 issue create "Login drops the session" "The cookie vanishes on redirect." -p high
 issue next
 ```
@@ -32,6 +33,7 @@ issue next
 - [Reporting a bug or asking a question](#reporting-a-bug-or-asking-a-question)
 - [Reporting a vulnerability](#reporting-a-vulnerability)
 - [Contributing](#contributing)
+- [Release history](#release-history)
 - [Non-goals](#non-goals)
 - [Command reference](#command-reference)
 - [Closing](#closing)
@@ -88,14 +90,14 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 Already have [pipx](https://pipx.pypa.io/)? It does the same job - use
 `pipx install` in place of `uv tool install` below and skip this step.
 
-### Step 2: install cli-issue-tracker
+### Step 2: install CLIIT
 
 ```bash
-uv tool install git+https://github.com/NotYourBurger/cli-issue-tracker
+uv tool install git+https://github.com/NotYourBurger/CLIIT
 ```
 
-That installs one command, `issue`, onto your PATH, in an isolated environment
-of its own. Check it:
+That installs `issue` onto your PATH, with `cliit` as an equivalent alias, in
+an isolated environment of its own. Check it:
 
 ```bash
 issue --version
@@ -104,14 +106,14 @@ issue --version
 If your shell cannot find `issue`, open a new terminal - the installer adds a
 directory to your PATH, and the shell you already had open has not read it.
 
-Not on PyPI yet, so there is no `pip install cli-issue-tracker`. That lands
+Not on PyPI yet, so there is no `pip install cliit`. That lands
 with the first tagged release.
 
 **Afterwards:**
 
 ```bash
-uv tool upgrade cli-issue-tracker     # get the newest version
-uv tool uninstall cli-issue-tracker   # remove it
+uv tool upgrade cliit     # get the newest version
+uv tool uninstall cliit   # remove it
 ```
 
 **Working on the tracker itself** rather than using it? Clone the repository
@@ -126,13 +128,13 @@ repo or not.
 
 ```bash
 cd path/to/your-project
-issue init
+issue init --agents
 ```
 
-That makes a `.issues/` folder here. If the repo keeps a `CLAUDE.md` or an
-`AGENTS.md`, `init` appends the workflow rule to it so an agent follows the
-same loop you do; if it keeps neither it says so on screen and writes nothing.
-`issue init --agents` writes an `AGENTS.md` if you want one.
+That makes a `.issues/` folder here and configures both Codex and Claude Code.
+In a fresh repo, `--agents` writes the shared workflow to `AGENTS.md` and a
+small `CLAUDE.md` import. If one instruction file already exists, it remains
+the single source and the missing discovery file points to it.
 
 **2. File something.**
 
@@ -234,7 +236,7 @@ plans](#work-plans) and [Event log](#event-log).
 
 ## Reporting a bug or asking a question
 
-**File it on [GitHub Issues](https://github.com/NotYourBurger/cli-issue-tracker/issues).**
+**File it on [GitHub Issues](https://github.com/NotYourBurger/CLIIT/issues).**
 That is the door for anybody outside this repo: it needs no clone, no id and no
 fork. `.issues/` is the source of truth behind it. A maintainer files what
 arrives as `.issues/ISS-NNN.md` and closes the GitHub issue naming that id, so
@@ -266,6 +268,13 @@ the things deliberately not in this repo - no linter, no formatter, no test
 framework - so nobody adds one helpfully.
 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) is the Contributor Covenant, and the
 address in it is read.
+
+## Release history
+
+[CHANGELOG.md](CHANGELOG.md) records user-visible changes. Maintainers can cut
+the first and later releases from [the release checklist](docs/RELEASING.md);
+publishing is performed by GitHub Actions with PyPI Trusted Publishing, never
+with a package token stored in the repository.
 
 ## Non-goals
 
@@ -341,6 +350,7 @@ issue event ISS-042 --type probe --stdin < probe.log   # pipe stdout in instead 
 issue event ISS-042                 # print what has been recorded so far
 issue event ISS-042 --json          # the same log, for an agent
 issue --version                     # the version a bug report should name
+cliit --version                     # the same CLI under the project name
 ```
 
 Statuses are `in-progress`, `open` and `closed` — `closed` is written by
@@ -719,9 +729,12 @@ whichever of `CLAUDE.md` and `AGENTS.md` the repo already keeps: the workflow
 rule, and a short block naming the tracker and the four verbs an agent needs.
 Both are appended once and never overwrite what is there. If the repo keeps
 neither file, `init` says so on stderr and writes nothing — which file a repo
-gives its agents is that repo's decision — and `issue init --agents` writes
-`AGENTS.md` when you want one. Set `ISSUES_DIR` to point the tool at
-a specific directory and skip the walk entirely.
+gives its agents is that repo's decision. `issue init --agents` opts in to a
+portable setup. In a fresh repo the shared instructions live in `AGENTS.md`
+for Codex and a small `CLAUDE.md` imports them for Claude Code; an existing
+instruction file remains the source and the missing discovery file points to
+it. Set `ISSUES_DIR` to point the tool at a specific directory and skip the
+walk entirely.
 
 `ISSUE_USER` is the third environment knob: it is who `issue claim` acts as
 when `--by` is not given, checked before `git config user.name`.

@@ -12,7 +12,7 @@ wheels = [
 ]
 
 [[package]]
-name = "cli-issue-tracker"
+name = "cliit"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

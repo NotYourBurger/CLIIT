@@ -468,7 +468,7 @@ issue brief
 Example:
 
 ```text
-cli-issue-tracker
+CLIIT
 
 PROJECT
 Open: 12    In progress: 1    Ready: 7    Blocked: 4    Closed: 26

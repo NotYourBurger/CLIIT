@@ -94,11 +94,11 @@ to write the workflow rule into `CLAUDE.md` / `AGENTS.md`, next to its own
 already inside the tool, so a line about which command to type would leak into
 all of them. When the repo keeps neither file nothing is written - which file a
 repo gives its agents is that repo's call - but it is said on stderr rather
-than decided in silence, and `--agents` writes `AGENTS.md` for anyone who wants
-one (ISS-044). This repo keeps `CLAUDE.md` and no `AGENTS.md`: it had one, as
-an untracked copy that drifted five issues out of date before anyone read it
-again, and two files carrying the same prose is one file that goes stale
-(ISS-045). So `init` here appends to `CLAUDE.md` alone.
+than decided in silence. `--agents` writes the shared workflow to `AGENTS.md`
+and makes a missing `CLAUDE.md` import it, because Claude Code does not read
+AGENTS.md directly (ISS-054). This repo keeps the inverse shape: `CLAUDE.md`
+is the detailed source and a tiny `AGENTS.md` tells Codex to read it. There is
+still only one copy of the prose, which is the drift ISS-045 forbids.
 
 Nothing imports `issues.py`. If something wants to, the thing it wants belongs
 in a lower layer — and Python raises on the cycle, so the suite says so at

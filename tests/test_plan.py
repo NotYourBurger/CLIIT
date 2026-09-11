@@ -141,11 +141,9 @@ def rule_reaches_the_agent():
 def a_repo_with_neither_file():
     """The half of `init` that only happens in a repo that is not this one.
 
-    Nothing is created when neither file exists - inventing a CLAUDE.md in a
-    repo that never had one is a decision about that repo's conventions this
-    tool has no standing to make. But that decision was being made by saying
-    nothing at all: the user saw "Feel free to explore .issues folder" and
-    never learned the agent half of the tool did not install."""
+    Nothing is created without an explicit request. With --agents, AGENTS.md
+    is the shared source and CLAUDE.md imports it, matching the two tools'
+    documented discovery filenames without copying the workflow body."""
     original = os.getcwd()
     with tempfile.TemporaryDirectory() as tmp:
         os.chdir(tmp)
@@ -156,10 +154,11 @@ def a_repo_with_neither_file():
             assert code is None, (code, out, err)
             assert os.path.isdir(os.path.join(tmp, ".issues")), out
             assert not os.path.isfile(os.path.join(tmp, "AGENTS.md")), "init invented a file"
+            assert not os.path.isfile(os.path.join(tmp, "CLAUDE.md")), "init invented a file"
             assert "AGENTS.md" in err and "--agents" in err, err
 
-            # Asked out loud, it writes one - and writes both blocks into it,
-            # the same as a file that was already there.
+            # Asked out loud, it writes the vendor-neutral source and the
+            # documented Claude import. The workflow itself still has one copy.
             code, out, err = run(init, agents=True)
             assert code is None, (code, out, err)
             written = read(os.path.join(tmp, "AGENTS.md"))
@@ -167,6 +166,30 @@ def a_repo_with_neither_file():
             assert "issue start" in written, written
             # A file this tool brought into being does not open on a blank line.
             assert written.startswith("## Work plans"), written
+            assert read(os.path.join(tmp, "CLAUDE.md")) == "@AGENTS.md\n"
+
+            # Re-running is byte-idempotent for both discovery files.
+            run(init, agents=True)
+            assert read(os.path.join(tmp, "AGENTS.md")) == written
+            assert read(os.path.join(tmp, "CLAUDE.md")) == "@AGENTS.md\n"
+        finally:
+            os.chdir(original)
+
+
+def a_repo_with_claude_only():
+    """--agents adds Codex discovery without copying existing instructions."""
+    original = os.getcwd()
+    with tempfile.TemporaryDirectory() as tmp:
+        os.chdir(tmp)
+        try:
+            write(os.path.join(tmp, "CLAUDE.md"), "# Existing instructions\n")
+            run(init, agents=True)
+            claude = read(os.path.join(tmp, "CLAUDE.md"))
+            agents = read(os.path.join(tmp, "AGENTS.md"))
+            assert "Existing instructions" in claude
+            assert "issue next" in claude
+            assert "CLAUDE.md" in agents
+            assert "issue next" not in agents, "the shared workflow was copied"
         finally:
             os.chdir(original)
 
@@ -415,6 +438,7 @@ def demo():
             os.environ.pop("ISSUE_USER", None)
     rule_reaches_the_agent()
     a_repo_with_neither_file()
+    a_repo_with_claude_only()
     print("ok")
 
 
