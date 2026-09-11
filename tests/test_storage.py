@@ -186,7 +186,10 @@ if __name__ == "__main__":
             deep = os.path.join(tmp, "src", "pkg")
             os.makedirs(deep)
             os.chdir(deep)
-            assert issues_dir() == issues, "did not walk up to the parent .issues/"
+            # macOS spells tempfile paths through /var, while getcwd() returns
+            # the same directory through its /private/var target. The contract
+            # is which directory was found, not which alias names it.
+            assert os.path.samefile(issues_dir(), issues), "did not walk up to the parent .issues/"
             os.environ["ISSUES_DIR"] = os.path.join(tmp, "elsewhere")
             assert issues_dir() != issues, "$ISSUES_DIR did not win over the walk"
             del os.environ["ISSUES_DIR"]
