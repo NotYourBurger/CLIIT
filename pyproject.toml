@@ -1,6 +1,6 @@
 [project]
 name = "cliit"
-version = "0.1.0"
+version = "0.1.1"
 description = "CLIIT is a Markdown-native issue tracker for developers and coding agents"
 readme = "README.md"
 license = "MIT"

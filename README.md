@@ -2,18 +2,21 @@
 
 # CLIIT
 
-**Issue tracking that lives with your code.**
+**Markdown-native issue tracking for coding agents.**
 
 [![CI](https://github.com/NotYourBurger/CLIIT/actions/workflows/ci.yml/badge.svg)](https://github.com/NotYourBurger/CLIIT/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue)](https://www.python.org/)
 
 [Install](#install) · [Quickstart](#quickstart) · [Usage](#usage) · [AI coding agents](#ai-coding-agents) · [Configuration](#configuration)
 
+<img src="https://raw.githubusercontent.com/NotYourBurger/CLIIT/main/docs/demo.gif" alt="A terminal session: issue init, create, next --claim, start and close, then the Markdown file it wrote and the git diff that closing it produced" width="820">
+
 </div>
 
-CLIIT (Command-Line Issue Tracker) stores each issue as a Markdown file in
-`.issues/`. Keep your backlog beside your code, review changes in pull requests,
-and share it through Git. No server or account required.
+Keep issues, work plans, claims, and completion evidence in Git. No server or
+account required. CLIIT (Command-Line Issue Tracker) stores each issue as a
+Markdown file in `.issues/`, so your backlog reviews in pull requests and
+travels with the clone.
 
 - **Plain files you own.** Read and edit issues in any text editor, even without CLIIT.
 - **Focused daily workflow.** Search, prioritize, assign, and track dependencies from your terminal.

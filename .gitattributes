@@ -18,3 +18,10 @@
 # same reason: `issue check` compares a file against its own rewrite byte for
 # byte, and a CRLF checkout fails that on every line.
 tests/fixtures/**/*.md text eol=lf
+
+# The demo (ISS-058). `demo.sh` is run by bash, where a CRLF checkout is not
+# churn but `$'\r': command not found`, and the cast beside it is the LF the
+# recorder wrote. The gif is named rather than left to git's NUL-byte guess.
+docs/demo.sh text eol=lf
+docs/demo.cast text eol=lf
+docs/demo.gif binary
