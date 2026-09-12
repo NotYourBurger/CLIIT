@@ -54,10 +54,8 @@ Not in scope, because they are the design and are written down as such:
   who can write files in your checkout can already write anything; the tool
   is not a sandbox over your own repo.
 - **The write lock is advisory and one repo wide.** Two agents in one
-  worktree are ordered by `.issues/.lock`; two *clones* are not, and the merge
-  is yours. [Non-goals](README.md#non-goals) says so.
-- **Ids are not unique across clones.** Two forks both allocating `ISS-058`
-  is a documented limit, not a flaw.
+  worktree are ordered by `.issues/.lock`; independent clones have no shared
+  lock, but their generated IDs do not require one.
 - Anything that needs the attacker to already be running as you.
 
 ## Supported versions

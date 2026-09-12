@@ -34,6 +34,10 @@ def ids(text):
     return [line.split()[0] for line in text.splitlines() if line.startswith("ISS")]
 
 
+from helpers import legacy_create
+create_issue = legacy_create
+
+
 def demo():
     with tempfile.TemporaryDirectory() as tmp:
         os.environ["ISSUES_DIR"] = tmp

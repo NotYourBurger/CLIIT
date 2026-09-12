@@ -7,7 +7,7 @@ in ISS-039 and both forced here rather than raced for:
 - a claim `try_claim` told *both* callers they won, because reading the file
   back only proves ownership when the two writes are adjacent, and a third
   operation fits between a writer's write and its read-back;
-- an id `next_id` handed out twice, because a directory scan answers a question
+- a directory-scanned id handed out twice, because a scan answers a question
   about a moment and both callers wrote to the same name.
 
 Nothing in here sleeps and waits to see what happens. The id checks force the
@@ -27,7 +27,6 @@ import tempfile
 import time
 
 from helpers import run
-from cli_issue_tracker.convert_id import next_id
 from cli_issue_tracker.convert_id import reserve_id
 from cli_issue_tracker.issues import create_issue
 from cli_issue_tracker.issues import try_claim
@@ -75,27 +74,23 @@ def demo():
             # the id is not an answer, it is a file that now exists.
             first, second = reserve_id(tmp), reserve_id(tmp)
             assert first != second, f"one id for two creates: {first}"
-            assert sorted(os.listdir(tmp)) == [f"{first}.md", f"{second}.md"]
+            assert sorted(os.listdir(tmp)) == sorted([f"{first}.md", f"{second}.md"])
             for name in (first, second):
                 os.unlink(os.path.join(tmp, f"{name}.md"))
 
-            # And the scan on its own is still the scan - it has to keep
-            # answering "what is next" for the reservation loop to count past
-            # a file someone else just took.
-            assert next_id(tmp) == next_id(tmp), "next_id is not supposed to allocate"
-
-            run(create_issue, "Alice's report", "Body A", "high")
-            run(create_issue, "Bob's report", "Body B", "high")
+            _, first, _ = run(create_issue, "Alice's report", "Body A", "high")
+            _, second, _ = run(create_issue, "Bob's report", "Body B", "high")
+            first, second = first.split()[1], second.split()[1]
             ids = sorted(n for n in os.listdir(tmp) if n.endswith(".md"))
-            assert ids == ["ISS-001.md", "ISS-002.md"], ids
-            assert read_issue("ISS-001")["title"] == "Alice's report"
-            assert read_issue("ISS-002")["title"] == "Bob's report"
+            assert ids == sorted([f"{first}.md", f"{second}.md"]), ids
+            assert read_issue(first)["title"] == "Alice's report"
+            assert read_issue(second)["title"] == "Bob's report"
 
             # A claim is one caller's, and the loser is told so rather than
             # being told it won and starting the same work.
-            assert try_claim("ISS-001", "alice") is True
-            assert try_claim("ISS-001", "bob") is False
-            assert read_issue("ISS-001")["assignee"] == "alice"
+            assert try_claim(first, "alice") is True
+            assert try_claim(first, "bob") is False
+            assert read_issue(first)["assignee"] == "alice"
 
             # The lock those two now run inside really does exclude another
             # process. Forced, not timed: the child has the lock before this
@@ -121,7 +116,7 @@ def demo():
             child.wait(timeout=30)
             with locked(blocking=False):
                 pass
-            assert try_claim("ISS-002", "bob") is True, "a killed holder wedged the lock"
+            assert try_claim(second, "bob") is True, "a killed holder wedged the lock"
 
             # Cheap enough that every write can take it. A poll-and-sleep
             # implementation would blow this by two orders of magnitude.

@@ -148,6 +148,10 @@ def missing_git_is_the_absent_answer():
             os.environ.pop("ISSUES_DIR", None)
 
 
+from helpers import legacy_create
+create_issue = legacy_create
+
+
 def demo():
     undecodable_plan_is_still_a_plan()
     missing_git_is_the_absent_answer()

@@ -13,8 +13,7 @@ Issue:
 
 - [ ] `uv run python tests/all.py` is green
 - [ ] New behaviour has its own `tests/test_<thing>.py`
-- [ ] This adds no new `.issues/*.md` file — ids are allocated on trunk only,
-      so two forks both allocate `ISS-058` and git merges them with nothing to
-      show you. Editing a file that already exists is fine.
+- [ ] Any new `.issues/*.md` file was created by the tracker, so its generated
+      ID remains unique across independent clones.
 - [ ] No linter, formatter or test framework added. Not an oversight; see
       CONTRIBUTING.md.

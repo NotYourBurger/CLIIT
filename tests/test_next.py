@@ -52,6 +52,10 @@ def picked(**kwargs):
     return out.split()[0]
 
 
+from helpers import legacy_create
+create_issue = legacy_create
+
+
 def demo():
     with tempfile.TemporaryDirectory() as tmp:
         os.environ["ISSUES_DIR"] = tmp

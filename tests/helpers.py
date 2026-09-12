@@ -8,8 +8,11 @@ because four of them had grown their own copy of the same eight lines.
 import contextlib
 import io
 import os
+import re
 
 from cli_issue_tracker.issues import close_issue
+from cli_issue_tracker.issues import create_issue as _create_issue
+from cli_issue_tracker.storage import issues_dir, read_issue, write_issue
 
 # The repo, not this directory: test_encoding walks the source.
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -36,6 +39,23 @@ def run(function, *args, **kwargs):
     except SystemExit as exit:
         return exit.code, out.getvalue(), err.getvalue()
     return None, out.getvalue(), err.getvalue()
+
+
+def legacy_create(*args, **kwargs):
+    """Create an issue, then make it a numeric legacy fixture.
+
+    Most command tests exercise legacy IDs on purpose; the dedicated ID-scheme
+    test covers newly generated IDs without duplicating every command test.
+    """
+    directory = issues_dir()
+    before = set(os.listdir(directory))
+    _create_issue(*args, **kwargs)
+    created = next(name for name in set(os.listdir(directory)) - before if name.endswith(".md"))
+    issue = read_issue(created[:-3])
+    numbers = [int(match.group(1)) for name in before if (match := re.fullmatch(r"ISS-(\d+)\.md", name))]
+    issue["id"] = f"ISS-{max(numbers, default=0) + 1:03d}"
+    write_issue(issue)
+    os.unlink(os.path.join(directory, created))
 
 
 def close(*ids):

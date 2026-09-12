@@ -16,6 +16,10 @@ from cli_issue_tracker.issues import create_issue, list_issues, set_fields
 from cli_issue_tracker.storage import parse_issue, write_issue
 
 
+from helpers import legacy_create
+create_issue = legacy_create
+
+
 def demo():
     with tempfile.TemporaryDirectory() as tmp:
         os.environ["ISSUES_DIR"] = tmp

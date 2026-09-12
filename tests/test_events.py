@@ -43,6 +43,10 @@ def with_stdin(text, function, *args, **kwargs):
         sys.stdin = original
 
 
+from helpers import legacy_create
+create_issue = legacy_create
+
+
 def demo():
     with tempfile.TemporaryDirectory() as tmp:
         os.environ["ISSUES_DIR"] = tmp

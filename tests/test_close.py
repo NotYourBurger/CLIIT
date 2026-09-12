@@ -44,6 +44,10 @@ def head_sha():
     return git.stdout.strip() if not git.returncode else ""
 
 
+from helpers import legacy_create
+create_issue = legacy_create
+
+
 def demo():
     with tempfile.TemporaryDirectory() as tmp:
         os.environ["ISSUES_DIR"] = tmp

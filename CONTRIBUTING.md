@@ -18,13 +18,9 @@ this file, they win and this file is the bug.
 Issues](https://github.com/NotYourBurger/CLIIT/issues)**, not to a
 file in `.issues/`. It needs no clone and no fork.
 
-**A pull request may edit an existing `.issues/*.md`, but must not create
-one.** Ids are allocated on trunk only — an id is one past the highest one
-visible, so two forks each allocate `ISS-058`, both files are valid, and git
-merges them with nothing to show you. If your change needs an issue that does
-not exist yet, open the GitHub issue and it will be filed on trunk first.
-README's [Reporting a bug or asking a
-question](README.md#reporting-a-bug-or-asking-a-question) has the reasoning.
+**A pull request may create or edit `.issues/*.md` files.** IDs are generated
+offline, so separate forks can file issues without coordinating allocation.
+Use GitHub Issues for bugs and questions that do not belong in this tracker.
 
 **A vulnerability does not go to GitHub Issues either.**
 [SECURITY.md](SECURITY.md) has the private address and the list of what counts

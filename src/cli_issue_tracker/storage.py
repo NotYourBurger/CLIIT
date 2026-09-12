@@ -9,11 +9,9 @@ from datetime import datetime
 ISSUES_DIR = ".issues"
 LOCK_FILE = ".lock"
 
-# The shape `next_id` allocates and every reader here assumes: letters, a dash,
-# digits. Written down because an id is joined onto a directory to make a path
-# in four places and was checked in none of them, so `../secret` was an id
-# (ISS-040). The prefix is the same letters, on their own.
-ID = re.compile(r"[A-Za-z]+-[0-9]+$")
+# Ids remain alphanumeric around one dash, so they stay safe to join onto the
+# issue directory. Numeric ids are the pre-ISS-059 form and remain valid.
+ID = re.compile(r"[A-Za-z]+-[0-9A-Za-z]+$")
 PREFIX = re.compile(r"[A-Za-z]+$")
 
 # The keys that keep their documented order at the top of every file; anything
@@ -63,8 +61,8 @@ def run_git(*args, cwd=None):
 
 
 def id_prefix() -> str:
-    """The letters in front of every id. One source, read by next_id when it
-    allocates and by nothing else - list, view, set and log all work off the
+    """The letters in front of every generated id. One source, read by the
+    allocator and by nothing else - list, view, set and log all work off the
     filename or the frontmatter, so they never need to know it. Configured the
     way the directory is, by environment variable, because that is the knob
     this tool already has and a second mechanism for one string is not worth
@@ -96,7 +94,7 @@ def require_id(id: str) -> str:
     and validate.py is three layers above it."""
     if not ID.match(id):
         print(
-            f"{id!r} is not an issue id - ids are letters, a dash and digits, "
+            f"{id!r} is not an issue id - ids are letters, a dash and alphanumerics, "
             f"like {id_prefix()}-001",
             file=sys.stderr,
         )

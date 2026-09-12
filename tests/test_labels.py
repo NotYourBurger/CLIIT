@@ -21,6 +21,10 @@ def read(tmp, id):
     return parse_issue(os.path.join(tmp, f"{id}.md"))
 
 
+from helpers import legacy_create
+create_issue = legacy_create
+
+
 def demo():
     with tempfile.TemporaryDirectory() as tmp:
         os.environ["ISSUES_DIR"] = tmp

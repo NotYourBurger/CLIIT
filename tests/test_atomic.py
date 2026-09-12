@@ -34,6 +34,9 @@ from cli_issue_tracker.storage import parse_issue
 from cli_issue_tracker.storage import read_issue
 from cli_issue_tracker.storage import write_issue
 
+from helpers import legacy_create
+create_issue = legacy_create
+
 REAL_OPEN = open
 
 
@@ -88,14 +91,15 @@ def demo():
         os.environ["ISSUES_DIR"] = tmp
         os.environ["ISSUE_USER"] = "tester"
         try:
-            run(create_issue, "Keep this prose", "The paragraph with no other copy.", "high")
-            path = os.path.join(tmp, "ISS-001.md")
+            _, out, _ = run(create_issue, "Keep this prose", "The paragraph with no other copy.", "high")
+            id = "ISS-001"
+            path = os.path.join(tmp, f"{id}.md")
             before = raw(path)
             assert before, "nothing was written to begin with"
 
             # An issue write that fails part-way. The exception reaches the
             # caller - swallowing it would report a write that did not happen.
-            issue = read_issue("ISS-001")
+            issue = read_issue(id)
             issue["priority"] = "low"
             storage.open = failing_open
             try:
@@ -115,14 +119,14 @@ def demo():
             # different rather than smaller: `start` will not reseed over a
             # plan that exists, so a 0-byte one is a checkpoint list that
             # cannot be recovered.
-            run(start_issue, "ISS-001")
-            seeded = plan_path("ISS-001")
+            run(start_issue, id)
+            seeded = plan_path(id)
             plan_before = raw(seeded)
             work = os.path.dirname(seeded)
 
             storage.open = failing_open
             try:
-                write_plan("ISS-001", "Keep this prose")
+                write_plan(id, "Keep this prose")
             except DiskFull:
                 pass
             else:
@@ -137,7 +141,7 @@ def demo():
             # left beside the file. `join_file` already committed to "\n" and
             # the replacement must not have quietly reintroduced the platform
             # default that ISS-033 was about.
-            written = write_issue(read_issue("ISS-001"))
+            written = write_issue(read_issue(id))
             assert written == path, written
             after = raw(path)
             assert b"\r\n" not in after, "CRLF came back"

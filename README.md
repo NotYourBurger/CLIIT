@@ -49,17 +49,17 @@ issue init
 issue create "Fix login redirect" "The session cookie disappears after sign-in." -p high -l bug
 issue list
 issue next
-issue start ISS-001
+issue start <ID-PRINTED-BY-CREATE>
 ```
 
-The example assumes a new tracker; use the ID returned by `create` in an existing
-one. `start` marks the issue in progress and creates `.issues/work/ISS-001.md`.
+Use the ID returned by `create`. `start` marks the issue in progress and creates
+its `.issues/work/<ID>.md` plan.
 Edit that plan as you work, keeping its checkpoints and next step current.
 
 After implementing and checking the fix, record the result:
 
 ```bash
-issue close ISS-001 --completed -m "Fixed session cookie handling." --verified "Signed in and confirmed the session survives the redirect."
+issue close <ID> --completed -m "Fixed session cookie handling." --verified "Signed in and confirmed the session survives the redirect."
 ```
 
 Commit `.issues/` alongside your code to keep the issue, work plan, and resolution
@@ -234,9 +234,9 @@ and outside Git, but committed history requires Git. There is no hosted UI,
 notification service, or synchronization with GitHub Issues.
 
 > [!IMPORTANT]
-> IDs are unique within one working copy, not across clones or forks. Coordinate
-> issue creation across branches; pulling first does not prevent simultaneous
-> allocations in separate clones.
+> IDs are generated offline and are unique across clones and forks. Their
+> sortable timestamp keeps newly created issues in creation order without a
+> shared allocator.
 
 <a id="reporting-a-bug-or-asking-a-question"></a>
 

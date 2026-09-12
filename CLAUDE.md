@@ -226,7 +226,7 @@ obvious from the code:
 - **Validate before writing.** Bad status/priority/blocker exits before anything
   touches disk; a rejected `create` must not burn an id.
 - **An id becomes a path, so `storage.require_id` checks its shape at the door.**
-  Letters, a dash, digits — the shape `next_id` allocates. It lives in
+  Letters, a dash, alphanumerics — the shape generated IDs use. It lives in
   `storage.py` and not in `validate.py` because `read_issue` is the lowest layer
   that does the join and cannot import upward, and it is called from exactly the
   three places a user's argument first becomes a path: `read_issue`, `log_issue`

@@ -22,6 +22,7 @@ Run: uv run python tests/test_stability_contract.py
 
 import json
 import os
+import re
 import shutil
 import tempfile
 
@@ -277,7 +278,9 @@ if __name__ == "__main__":
             os.environ["ISSUES_DIR"] = issues
             code, out, err = run(create_issue, "Filed from elsewhere", "Body")
             assert code is None, (code, err)
-            assert os.path.exists(os.path.join(issues, "ISS-001.md")), os.listdir(issues)
+            first_id = out.split()[1]
+            assert re.fullmatch(r"ISS-[0-9a-z]{10}", first_id), first_id
+            assert os.path.exists(os.path.join(issues, f"{first_id}.md")), os.listdir(issues)
 
             # ISSUE_PREFIX is read by `create` and by nothing else, so the
             # numbering restarts under the new letters instead of continuing
@@ -285,7 +288,9 @@ if __name__ == "__main__":
             os.environ["ISSUE_PREFIX"] = "BUG"
             code, out, err = run(create_issue, "Filed under another prefix", "Body")
             assert code is None, (code, err)
-            assert os.path.exists(os.path.join(issues, "BUG-001.md")), os.listdir(issues)
+            second_id = out.split()[1]
+            assert re.fullmatch(r"BUG-[0-9a-z]{10}", second_id), second_id
+            assert os.path.exists(os.path.join(issues, f"{second_id}.md")), os.listdir(issues)
             os.environ.pop("ISSUE_PREFIX")
 
             # ISSUE_USER is who `claim` acts as when --by is not given, read
@@ -293,9 +298,9 @@ if __name__ == "__main__":
             # value and not merely that something was written. A machine with
             # a user.name configured would pass a weaker assertion either way.
             os.environ["ISSUE_USER"] = "agent-1"
-            code, out, err = run(claim_issue, "ISS-001")
+            code, out, err = run(claim_issue, first_id)
             assert code is None, (code, err)
-            assert read_issue("ISS-001")["assignee"] == "agent-1", read_issue("ISS-001")
+            assert read_issue(first_id)["assignee"] == "agent-1", read_issue(first_id)
         finally:
             os.chdir(original)
             for knob in ("ISSUES_DIR", "ISSUE_PREFIX", "ISSUE_USER"):

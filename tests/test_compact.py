@@ -29,6 +29,10 @@ def cli(*args):
     )
 
 
+from helpers import legacy_create
+create_issue = legacy_create
+
+
 def demo():
     previous = {key: os.environ.get(key) for key in ("ISSUES_DIR", "ISSUE_USER", "ISSUE_PREFIX")}
     with tempfile.TemporaryDirectory() as tmp:

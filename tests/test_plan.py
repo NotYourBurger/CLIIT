@@ -194,6 +194,10 @@ def a_repo_with_claude_only():
             os.chdir(original)
 
 
+from helpers import legacy_create
+create_issue = legacy_create
+
+
 def demo():
     with tempfile.TemporaryDirectory() as tmp:
         os.environ["ISSUES_DIR"] = tmp
